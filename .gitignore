@@ -1,0 +1,20 @@
+# Environments
+.venv/
+.env
+__pycache__/
+*.pyc
+
+# Data (raw uploads and generated outputs — not source code)
+data/raw/*
+data/output/*
+!data/raw/.gitkeep
+!data/output/.gitkeep
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
