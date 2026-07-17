@@ -1,0 +1,11 @@
+# Controlled category vocabulary for the Phase 0 gold set
+# (Amazon-India "Supplier A" x Myntra "Supplier B", overlapping fashion categories).
+# Extraction agent must pick from THIS list — never free text.
+# Adding a category here is a deliberate decision, not a side effect of a messy feed.
+categories:
+  - tops
+  - shirts
+  - jeans
+  - tshirts
+  - casual-shoes
+  - handbags
