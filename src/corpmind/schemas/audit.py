@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class AuditLogEntry(BaseModel):
-    """Cross-cutting — every node that makes a decision writes one of these,
+    """Cross-cutting every node that makes a decision writes one of these,
     and each write should also go through logging_config's JSON logger so
     it's greppable at runtime, not just sitting in the final export."""
 
