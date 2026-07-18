@@ -103,7 +103,7 @@ def check_env_file_whitespace(env_path: Path = Path(".env")) -> None:
     """Fail loud on trailing whitespace in the raw .env file text itself —
     checked before dotenv parsing even runs, as a defense-in-depth backstop
     to the field_validator above (which only sees whitespace that survives
-    dotenv's own auto-stripping of unquoted values).
+    dotenv's own auto-stripping unquoted values).
     """
     if not env_path.exists():
         return
