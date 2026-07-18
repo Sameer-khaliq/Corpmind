@@ -32,7 +32,7 @@ class EvaluationRecord(BaseModel):
     def derive_overall_verdict(
         cls, match_score: MatchEvalScore | None, field_scores: list[FieldEvalScore]
     ) -> Verdict:
-        """overall_verdict is 'accept' only if every sub-score is 'accept' —
+        """overall verdict is 'accept' only if every sub-score is 'accept' —
         one flagged field or a shaky match sends the whole item to review."""
         all_verdicts = [s.verdict for s in field_scores]
         if match_score is not None:
