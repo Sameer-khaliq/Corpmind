@@ -6,7 +6,7 @@ class RawProduct(BaseModel):
 
     Deliberately column-agnostic: raw_fields keeps whatever columns the file
     had, under their original names. Ingestion never guesses at meaning —
-    which column is "the title" is the Extraction agent's job (Day 4),
+    which column is "the title" is the Extraction agent's job,
     not this schema's or the ingestion node's.
     """
 
