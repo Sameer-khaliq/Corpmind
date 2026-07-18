@@ -6,7 +6,7 @@ from corpmind.taxonomy import load_taxonomy
 
 
 class FieldExtraction(BaseModel):
-    """Per-field extraction result with confidence — lets the model routing
+    """Per-field extraction result with confidence  lets the model routing
     rule (§1.5) decide whether a field needs escalation to the bigger model."""
 
     value: str | None
