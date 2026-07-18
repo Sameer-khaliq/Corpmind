@@ -23,7 +23,7 @@ class FieldEnrichment(BaseModel):
     def grounded_claims_need_a_source(self) -> "FieldEnrichment":
         if self.resolution == EnrichmentResolution.FILLED_GROUNDED and not self.source_url:
             raise ValueError(
-                "resolution is filled_grounded but source_url is missing — "
+                "resolution is filled grounded but source_url is missing — "
                 "nothing gets published without a traceable grounding source"
             )
         return self
