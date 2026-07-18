@@ -14,7 +14,7 @@ class MatchResult(BaseModel):
 
     rrf_score is the actual confidence signal (calibrated against the gold
     set) — NOT a RAGAS score. RAGAS faithfulness is reserved for Enrichment's
-    grounding claims only; see schemas/enrichment.py.
+    grounding claims only; see schemas -enrichment.py.
     """
 
     candidate_supplier_id: str
