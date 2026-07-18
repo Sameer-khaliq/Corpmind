@@ -6,7 +6,7 @@ from corpmind.taxonomy import load_taxonomy
 
 
 class ConsistentProduct(BaseModel):
-    """Final reconciled, cross-supplier-merged catalog record — the output
+    """Final reconciled, cross supplier-merged catalog record — the output
     of the full pipeline (Matching + Enrichment + Evaluation gate passed).
     One per de-duplicated product, NOT one per raw supplier row — this is
     what the Report Agent exports, not what Extraction produces.
