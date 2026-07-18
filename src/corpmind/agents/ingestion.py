@@ -93,7 +93,7 @@ def ingest_supplier_feed(file_path: str | Path, supplier_id: str) -> list[RawPro
 
     rows: list[RawProduct] = []
     for idx, row in df.iterrows():
-        raw_fields = {
+        raw_fields = {          # main logic 
             str(col): (None if pd.isna(val) else str(val).strip())
             for col, val in row.items()
         }
