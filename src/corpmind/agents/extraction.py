@@ -55,7 +55,6 @@ def _build_user_prompt(rows: list[RawProduct]) -> str:
     ]
     return json.dumps({"rows": payload}, ensure_ascii=False)
 
-
 def _call_llm(client: Any, messages: list[dict]) -> str:
     response = client.chat.completions.create(
         model=settings.extraction_model,
