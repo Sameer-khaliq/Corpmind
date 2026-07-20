@@ -7,6 +7,7 @@ __pycache__/
 # Data (raw uploads and generated outputs — not source code)
 data/raw/*
 data/output/*
+data/chroma_store/*
 !data/raw/.gitkeep
 !data/output/.gitkeep
 
