@@ -28,10 +28,12 @@ class Settings(BaseSettings):
     TAVILY_API_KEY: str
 
     # --- Storage ----------------------------------------------------------
-    CHROMA_DB_PATH: str = "./data/chroma"
+    VECTOR_STORE_PATH: str = "./data/chroma_store"
+    VECTOR_STORE_COLLECTION: str = "catalog_products"
 
     # --- Model routing (per role, not hardcoded at call sites) --------
     extraction_model: str = "llama-3.1-8b-instant"
+    embeddings_model: str = "gemini-embeddings-001"
     escalation_model: str = "llama-3.3-70b-versatile"
     judge_model: str = "gemini-2.5-flash"
     judge_fallback_model: str = "llama-3.3-70b-versatile"
@@ -59,9 +61,7 @@ class Settings(BaseSettings):
     @field_validator("GROQ_API_KEY", "GOOGLE_API_KEY", "TAVILY_API_KEY")
     @classmethod
     def check_trailing_whitespace(cls, v: str) -> str:
-        """Catches whitespace that survives dotenv parsing — happens when a
-        value is quoted in .env (unquoted values are auto-stripped by
-        dotenv already, so this mainly guards the quoted case)."""
+        
         if v != v.strip():
             raise ValueError(
                 "API key contains leading or trailing whitespace! Please clean your .env file."
