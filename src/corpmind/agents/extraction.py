@@ -112,15 +112,6 @@ def _parse_response(
 
 
 def _flagged_product(row: RawProduct, error: str | None) -> NormalizedProduct:
-    """
-    Terminal outcome for a row that never validated within MAX_REPROMPTS.
-
-    Uses model_construct() deliberately — a normal constructor call would
-    itself raise (title/category are required, category is taxonomy-gated).
-    This is the ONLY place in this module that bypasses validation, and
-    only because the whole point of the object is "this failed validation,
-    a human needs to look at it" — never used for accepted/published data.
-    """
     return NormalizedProduct.model_construct(
         supplier_id=row.supplier_id,
         source_row_index=row.source_row_index,
