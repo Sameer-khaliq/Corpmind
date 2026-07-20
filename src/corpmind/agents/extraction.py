@@ -142,18 +142,7 @@ def _flagged_product(row: RawProduct, error: str | None) -> NormalizedProduct:
 
 
 def extract_batch(client: Any, rows: list[RawProduct]) -> list[NormalizedProduct]:
-    """
-    Extract one batch (<= BATCH_SIZE rows) with a schema-repair reprompt loop.
 
-    State machine:
-      attempt 0          -> original call
-      attempt 1..MAX      -> reprompt, scoped ONLY to rows still unresolved
-      after MAX exhausted -> remaining rows flagged, loop ends unconditionally
-
-    Guarantee: at most (MAX_REPROMPTS + 1) LLM calls per batch, full stop.
-    The `for attempt in range(...)` bound is the only exit condition that
-    matters — not "did it succeed" — so it cannot loop indefinitely.
-    """
     if not rows:
         return []
 
