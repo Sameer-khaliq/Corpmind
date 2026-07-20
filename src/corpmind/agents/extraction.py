@@ -180,7 +180,6 @@ def extract_batch(client: Any, rows: list[RawProduct]) -> list[NormalizedProduct
 
 
 def run_extraction(client: Any, rows: list[RawProduct]) -> list[NormalizedProduct]:
-    """Chunk into BATCH_SIZE-sized groups and extract each independently."""
     results: list[NormalizedProduct] = []
     for i in range(0, len(rows), BATCH_SIZE):
         chunk = rows[i : i + BATCH_SIZE]
