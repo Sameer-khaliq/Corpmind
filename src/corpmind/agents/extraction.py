@@ -177,8 +177,7 @@ def extract_batch(client: Any, rows: list[RawProduct]) -> list[NormalizedProduct
 
         last_error = error
         if attempt == MAX_REPROMPTS:
-            break  # cap reached — fall through to flagging, no more calls
-
+            break  
         logger.warning(
             "extraction schema-repair reprompt %d/%d for %d row(s): %s",
             attempt + 1, MAX_REPROMPTS, len(remaining), last_error,
