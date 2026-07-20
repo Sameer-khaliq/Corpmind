@@ -30,6 +30,7 @@ class NormalizedProduct(BaseModel):
     field_confidences: dict[str, float] = Field(
         default_factory=dict, description="field_name -> confidence, drives escalation"
     )
+    extraction_warnings: list[str] = Field(default_factory=list)
 
     @field_validator("category")
     @classmethod
