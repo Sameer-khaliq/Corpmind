@@ -35,7 +35,7 @@ import numpy as np
 from rank_bm25 import BM25Okapi
 
 from corpmind.config import settings
-from corpmind.matching_store import vector_store as vs  # NOTE: needs vs.embed_texts to be public - see filenames section
+from corpmind.retrieval import vector_store as vs 
 from corpmind.schemas.extraction import NormalizedProduct
 from corpmind.schemas.matching import MatchResult, MatchDecision  # ADAPT: confirm exact field names against your real Day 2 schema
 
