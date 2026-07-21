@@ -61,7 +61,7 @@ def _product_text(p: NormalizedProduct) -> str:
 def prepare_batch_index(items: list[NormalizedProduct]) -> dict:
     texts = [_product_text(p) for p in items]
     ids = [p.item_id for p in items]  
-    embeddings = np.array(vs.embed_texts(texts))
+    embeddings = np.array(vs._embed_texts(texts))
     norm = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
     dense_sim = norm @ norm.T  
 
@@ -154,28 +154,28 @@ def resolve_batch(
         if not new_members:
             continue
         if len(existing_members) > 1:
-           
+
             for m in new_members:
-                results[m] = MatchResult(item_id=m, decision=MatchDecision.AMBIGUOUS,
-                                          catalog_id=None, confidence=best_score[m])
+                results[m] = MatchResult(decision=MatchDecision.AMBIGUOUS,
+                                          catalog_id=None, rrf_score=best_score[m])
         elif len(existing_members) == 1:
             for m in new_members:
-                results[m] = MatchResult(item_id=m, decision=MatchDecision.MATCHED_EXISTING,
-                                          catalog_id=existing_members[0], confidence=best_score[m])
+                results[m] = MatchResult(decision=MatchDecision.MATCHED_EXISTING,
+                                          catalog_id=existing_members[0], rrf_score=best_score[m])
         elif len(new_members) > 1:
-            new_id = _mint_catalog_id() 
+            new_id = _mint_catalog_id()
             for m in new_members:
-                results[m] = MatchResult(item_id=m, decision=MatchDecision.NEW_PRODUCT,
-                                          catalog_id=new_id, confidence=best_score[m])
+                results[m] = MatchResult(decision=MatchDecision.NEW_PRODUCT,
+                                          catalog_id=new_id, rrf_score=best_score[m])
 
     for item_id in new_item_ids:
         if item_id not in results:
             if best_score[item_id] > low_cutoff:
-                results[item_id] = MatchResult(item_id=item_id, decision=MatchDecision.AMBIGUOUS,
-                                                catalog_id=None, confidence=best_score[item_id])
+                results[item_id] = MatchResult(decision=MatchDecision.AMBIGUOUS,
+                                                catalog_id=None, rrf_score=best_score[item_id])
             else:
-                results[item_id] = MatchResult(item_id=item_id, decision=MatchDecision.NEW_PRODUCT,
-                                                catalog_id=_mint_catalog_id(), confidence=best_score[item_id])
+                results[item_id] = MatchResult(decision=MatchDecision.NEW_PRODUCT,
+                                                catalog_id=_mint_catalog_id(), rrf_score=best_score[item_id])
 
     return results
 
@@ -211,4 +211,4 @@ def phase_b_node(batch_state: dict) -> dict:
     results = resolve_batch(all_pairs, new_item_ids)
     write_new_products(items, results)
 
-    return {"match_results": results}  
+    return {"match_results": results}
