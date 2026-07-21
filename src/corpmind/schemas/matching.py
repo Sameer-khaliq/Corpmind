@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 class MatchDecision(str, Enum):
     NEW_PRODUCT = "NEW_PRODUCT"
     MATCHED_EXISTING = "MATCHED_EXISTING"
-    AMBIGUOUS = "AMBIGUOUS"  # skips Enrichment, goes straight to human review
+    AMBIGUOUS = "AMBIGUOUS"  
 
 
 class MatchResult(BaseModel):
