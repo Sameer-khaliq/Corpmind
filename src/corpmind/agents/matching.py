@@ -63,11 +63,10 @@ def _product_text(p: NormalizedProduct) -> str:
 # ---------------------------------------------------------------------------
 def prepare_batch_index(items: list[NormalizedProduct]) -> dict:
     texts = [_product_text(p) for p in items]
-    ids = [p.item_id for p in items]  # ADAPT: your real unique-per-row id field - NOT p.sku (suppliers can reuse SKUs)
-
+    ids = [p.item_id for p in items]  
     embeddings = np.array(vs.embed_texts(texts))
     norm = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
-    dense_sim = norm @ norm.T  # symmetric NxN, diagonal = self-similarity (ignored later)
+    dense_sim = norm @ norm.T  
 
     tokenized = [t.lower().split() for t in texts]
     bm25 = BM25Okapi(tokenized) if tokenized else None
