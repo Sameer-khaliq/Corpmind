@@ -108,13 +108,8 @@ def find_candidates_for_item(item: NormalizedProduct, batch_index: dict) -> list
     return candidates
 
 
-# ---------------------------------------------------------------------------
-# PHASE B - sequential, single node after the join. Owns every decision and
-# every write. This is the ONLY place a catalog_id gets minted or assigned.
-# ---------------------------------------------------------------------------
+
 def _mint_catalog_id() -> str:
-    # uuid4, not a counter - a counter resets on process restart and can
-    # collide with ids minted in an earlier run. ADAPT prefix to your convention.
     return f"CM-{uuid.uuid4().hex[:12]}"
 
 
@@ -159,9 +154,7 @@ def resolve_batch(
         if not new_members:
             continue
         if len(existing_members) > 1:
-            # defensive: this cluster touches TWO different existing catalog_ids -
-            # likely a pre-existing duplicate already in the catalog. Don't
-            # silently pick one - flag for review instead.
+           
             for m in new_members:
                 results[m] = MatchResult(item_id=m, decision=MatchDecision.AMBIGUOUS,
                                           catalog_id=None, confidence=best_score[m])
@@ -170,7 +163,7 @@ def resolve_batch(
                 results[m] = MatchResult(item_id=m, decision=MatchDecision.MATCHED_EXISTING,
                                           catalog_id=existing_members[0], confidence=best_score[m])
         elif len(new_members) > 1:
-            new_id = _mint_catalog_id()  # ONE id for the WHOLE cluster - this is the intra-batch fix
+            new_id = _mint_catalog_id() 
             for m in new_members:
                 results[m] = MatchResult(item_id=m, decision=MatchDecision.NEW_PRODUCT,
                                           catalog_id=new_id, confidence=best_score[m])
@@ -186,12 +179,6 @@ def resolve_batch(
 
     return results
 
-
-# ---------------------------------------------------------------------------
-# WRITE - persistent store is keyed 1:1 by catalog_id (doc id == catalog_id),
-# so an intra-batch cluster that shares one id only needs ONE representative
-# document, not one per contributing row.
-# ---------------------------------------------------------------------------
 def write_new_products(items: list[NormalizedProduct], results: dict[str, MatchResult]) -> None:
     by_item = {item.item_id: item for item in items}
     seen_catalog_ids: set[str] = set()
@@ -207,18 +194,12 @@ def write_new_products(items: list[NormalizedProduct], results: dict[str, MatchR
     ids, texts, metadatas = zip(*to_add)
     vs.add_products(list(ids), list(texts), list(metadatas))
 
-
-# ---------------------------------------------------------------------------
-# LANGGRAPH WIRING - ADAPT to your real ItemState / BatchState from state.py.
-# Shown at the shape §1.2 implies: Phase A Send-dispatched per item into a
-# subgraph, Phase B a single node after the join.
-# ---------------------------------------------------------------------------
 def phase_a_node(item_state: dict) -> dict:
     """Runs once per item, in parallel, via Send. Read-only."""
     item: NormalizedProduct = item_state["item"]
-    batch_index: dict = item_state["batch_index"]  # shared, read-only, built once before dispatch
+    batch_index: dict = item_state["batch_index"]  
     pairs = find_candidates_for_item(item, batch_index)
-    return {"candidate_pairs": pairs}  # ADAPT: must match an Annotated[..., operator.add] field in BatchState
+    return {"candidate_pairs": pairs}  
 
 
 def phase_b_node(batch_state: dict) -> dict:
