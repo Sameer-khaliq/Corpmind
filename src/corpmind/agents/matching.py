@@ -40,8 +40,8 @@ from corpmind.schemas.extraction import NormalizedProduct
 from corpmind.schemas.matching import MatchResult, MatchDecision  
 
 
-HIGH_CUTOFF = getattr(settings, "MATCH_HIGH_CUTOFF", 0.020)
-LOW_CUTOFF = getattr(settings, "MATCH_LOW_CUTOFF", 0.008)
+HIGH_CUTOFF = getattr(settings, "MATCH_HIGH_CUTOFF", 0.90)
+LOW_CUTOFF = getattr(settings, "MATCH_LOW_CUTOFF", 0.60)
 TOP_K_CANDIDATES = 5
 
 @dataclass(frozen=True)
@@ -70,6 +70,7 @@ def prepare_batch_index(items: list[NormalizedProduct]) -> dict:
 
     return {
         "ids": ids,
+        "id_to_idx": {item_id: i for i, item_id in enumerate(ids)},
         "categories": [p.category for p in items],
         "dense_sim": dense_sim,
         "bm25": bm25,
@@ -102,7 +103,10 @@ def find_candidates_for_item(item: NormalizedProduct, batch_index: dict) -> list
         sparse_ids = [batch_index["ids"][i] for i in order]
 
         fused = vs.reciprocal_rank_fusion(dense_ids, sparse_ids)
-        for candidate_id, score in fused[:TOP_K_CANDIDATES]:
+        shortlisted = [candidate_id for candidate_id, _ in fused[:TOP_K_CANDIDATES]]
+        for candidate_id in shortlisted:
+            cand_idx = batch_index["id_to_idx"][candidate_id]
+            score = float(dense_row[cand_idx])  # raw cosine similarity, not fused rank score
             candidates.append(CandidatePair(item.item_id, candidate_id, score, candidate_is_existing=False))
 
     return candidates
