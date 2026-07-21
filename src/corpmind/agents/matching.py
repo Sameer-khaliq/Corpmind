@@ -57,10 +57,7 @@ def _product_text(p: NormalizedProduct) -> str:
     return " ".join(str(x) for x in parts if x)
 
 
-# ---------------------------------------------------------------------------
-# PREP - runs ONCE, before Send-dispatch fans out. Read-only structure every
-# item's Phase A task shares (safe - never mutated during Phase A).
-# ---------------------------------------------------------------------------
+
 def prepare_batch_index(items: list[NormalizedProduct]) -> dict:
     texts = [_product_text(p) for p in items]
     ids = [p.item_id for p in items]  
@@ -80,9 +77,6 @@ def prepare_batch_index(items: list[NormalizedProduct]) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# PHASE A - per item, parallel, read-only. Two retrieval arms.
-# ---------------------------------------------------------------------------
 def find_candidates_for_item(item: NormalizedProduct, batch_index: dict) -> list[CandidatePair]:
     text = _product_text(item)
     metadata_filter = {"category": item.category}
