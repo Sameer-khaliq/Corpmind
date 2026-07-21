@@ -82,12 +82,9 @@ def find_candidates_for_item(item: NormalizedProduct, batch_index: dict) -> list
     metadata_filter = {"category": item.category}
     candidates: list[CandidatePair] = []
 
-    # arm 1: existing catalog (Day 6, already query-layer filtered)
     for candidate_id, score in vs.query_store(text, metadata_filter=metadata_filter, top_k=TOP_K_CANDIDATES):
         candidates.append(CandidatePair(item.item_id, candidate_id, score, candidate_is_existing=True))
 
-    # arm 2: other items in THIS batch - same dense+sparse+RRF pattern, same
-    # category filter, self excluded, using the shared read-only batch_index
     idx = batch_index["ids"].index(item.item_id)
     allowed = [
         i for i, cat in enumerate(batch_index["categories"])
