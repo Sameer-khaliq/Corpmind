@@ -211,4 +211,4 @@ def phase_b_node(batch_state: dict) -> dict:
     results = resolve_batch(all_pairs, new_item_ids)
     write_new_products(items, results)
 
-    return {"match_results": results}  # AD
+    return {"match_results": results}  
