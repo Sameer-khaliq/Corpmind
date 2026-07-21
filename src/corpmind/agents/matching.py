@@ -37,11 +37,9 @@ from rank_bm25 import BM25Okapi
 from corpmind.config import settings
 from corpmind.retrieval import vector_store as vs 
 from corpmind.schemas.extraction import NormalizedProduct
-from corpmind.schemas.matching import MatchResult, MatchDecision  # ADAPT: confirm exact field names against your real Day 2 schema
+from corpmind.schemas.matching import MatchResult, MatchDecision  
 
-# ADAPT: add these two to config.py's Settings. Scale-correct for k=60 RRF
-# (max achievable ~0.033, rank0 in both arms) - NOT validated thresholds,
-# just a starting point. MUST calibrate against Day 21's gold set.
+
 HIGH_CUTOFF = getattr(settings, "MATCH_HIGH_CUTOFF", 0.020)
 LOW_CUTOFF = getattr(settings, "MATCH_LOW_CUTOFF", 0.008)
 TOP_K_CANDIDATES = 5
