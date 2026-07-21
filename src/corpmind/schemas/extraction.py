@@ -13,9 +13,11 @@ class FieldExtraction(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
+# src/corpmind/schemas/extraction.py
 class NormalizedProduct(BaseModel):
     """Fixed-schema product, one per RawProduct, after the Extraction agent runs."""
 
+    item_id: str  
     supplier_id: str
     source_row_index: int
     title: str
@@ -27,9 +29,7 @@ class NormalizedProduct(BaseModel):
     price: Decimal | None = None
     sku: str | None = None
     description: str | None = None
-    field_confidences: dict[str, float] = Field(
-        default_factory=dict, description="field_name -> confidence, drives escalation"
-    )
+    field_confidences: dict[str, float] = Field(default_factory=dict)
     extraction_warnings: list[str] = Field(default_factory=list)
 
     @field_validator("category")
