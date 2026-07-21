@@ -30,7 +30,8 @@ class Settings(BaseSettings):
     # --- Storage ----------------------------------------------------------
     VECTOR_STORE_PATH: str = "./data/chroma_store"
     VECTOR_STORE_COLLECTION: str = "catalog_products"
-
+    MATCH_HIGH_CUTOFF: float = 0.020
+    MATCH_LOW_CUTOFF: float = 0.008
     # --- Model routing (per role, not hardcoded at call sites) --------
     extraction_model: str = "llama-3.1-8b-instant"
     embeddings_model: str = "gemini-embeddings-001"
