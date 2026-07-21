@@ -44,11 +44,6 @@ HIGH_CUTOFF = getattr(settings, "MATCH_HIGH_CUTOFF", 0.020)
 LOW_CUTOFF = getattr(settings, "MATCH_LOW_CUTOFF", 0.008)
 TOP_K_CANDIDATES = 5
 
-
-# ---------------------------------------------------------------------------
-# lightweight internal type - Phase A's own working representation of
-# "these two things might be the same product". Not a project-wide schema.
-# ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class CandidatePair:
     item_id: str
@@ -58,7 +53,6 @@ class CandidatePair:
 
 
 def _product_text(p: NormalizedProduct) -> str:
-    # ADAPT: mirror however Day 6 / ecommerce-rag renders a product to text
     parts = [p.title, p.brand, p.category, p.color, p.material, p.size, p.description]
     return " ".join(str(x) for x in parts if x)
 
