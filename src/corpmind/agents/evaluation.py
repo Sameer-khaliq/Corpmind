@@ -429,7 +429,7 @@ if __name__ == "__main__":
     field_verdicts = {fe.field_name: fe.verdict for fe in day13_record.field_evals}
     assert field_verdicts["color"] == "ACCEPT"
     assert field_verdicts["material"] == "REJECT_TO_REVIEW"
-    assert field_verdicts["size"] == "ACCEPT"  # LEFT_FLAGGED -> trivial accept, no claim to falsify
+    assert field_verdicts["size"] == "ACCEPT"  
     assert day13_record.overall_verdict == "REJECT_TO_REVIEW", "aggregation must reject even though match_eval alone would accept"
     print("[Day 13] PASS — mixed case aggregated correctly:", day13_record.overall_reason)
 
