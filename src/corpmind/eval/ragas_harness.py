@@ -1,40 +1,11 @@
 """
 eval/ragas_harness.py
-
 CorpMind — RAGAS blind-judge faithfulness harness (Day 12)
-============================================================
-
-Reuses the RAGAS harness PATTERN from ecommerce-rag (batched LLM-judge calls,
-threshold-gated accept/reject) — but the blind-judge architecture here is
-NEW, not a straight copy: the judge sees ONLY (retrieved_snippet,
-claimed_value), never the enrichment agent's own reasoning or tool trace
-(§1.6). That blindness is what makes the faithfulness gate double as the
-prompt-injection backstop.
-
-Deterministic regex injection-marker gate runs BEFORE any LLM call and fails
-the whole source closed to 0.0 if a marker phrase appears anywhere in it.
-This is the fix from Day 11's live finding: an LLM-only blind judge (naked
-score, then structured directive/evidence decomposition) scored a planted
-injection 1.0 twice, because the value-bearing sentence sat grammatically
-separate from the marker sentences. The regex gate is required in the real
-pipeline, not just in the Day 11 test file.
-
-WIRING YOU MUST DO before this runs for real:
-  1. `default_judge_call_fn` raises NotImplementedError — plug in your real
-     Gemini 2.5-flash client (same wrapper enrichment.py already calls for
-     its LLM calls).
-  2. `settings.faithfulness_threshold` — confirm this exact attribute name
-     exists in your real config.py; the getattr() fallback below assumes it.
-
-Consumed by agents/evaluation_agent.py — this file has NO dependency on
-that one, so it stays a standalone, independently testable harness (you can
-run this file directly to prove the Day 12 checkpoint on its own).
-
 Run: uv run python eval/ragas_harness.py
 """
 
 from __future__ import annotations
-
+import logging
 import json
 import re
 from typing import Callable, Literal
@@ -42,36 +13,27 @@ from typing import Callable, Literal
 from pydantic import BaseModel, Field
 
 try:
-    from corpmind.config import settings  # type: ignore
-    from corpmind.logging_config import get_logger  # type: ignore
-
-    logger = get_logger(__name__)
+    from corpmind.config import settings  
+    logger = logging.getLogger(__name__)
 except ModuleNotFoundError:
     import logging
 
     logger = logging.getLogger(__name__)
 
     class _StubSettings:
-        faithfulness_threshold = 0.85
-
+        FAITHFULNESS_THRESHOLD: float = 0.85
     settings = _StubSettings()
 
 
 def _faithfulness_threshold() -> float:
-    return float(getattr(settings, "faithfulness_threshold", 0.85))
-
+    return float(getattr(settings, "FAITHFULNESS_THRESHOLD", 0.85))
 
 Verdict = Literal["ACCEPT", "REJECT_TO_REVIEW"]
 
 
-# ---------------------------------------------------------------------------
-# Schemas
-# ---------------------------------------------------------------------------
-
-
 class FieldFaithfulnessInput(BaseModel):
     """One (claim, snippet) pair going into the blind judge."""
-
+    catalog_id: str
     field_name: str
     claimed_value: str
     retrieved_snippet: str
@@ -95,10 +57,6 @@ class FieldEvalScore(BaseModel):
     injection_suspected: bool = False
 
 
-# ---------------------------------------------------------------------------
-# Injection-marker gate (deterministic, runs before any LLM call)
-# ---------------------------------------------------------------------------
-
 _INJECTION_MARKER_PATTERNS: list[re.Pattern[str]] = [
     re.compile(p, re.IGNORECASE)
     for p in [
@@ -115,7 +73,7 @@ _INJECTION_MARKER_PATTERNS: list[re.Pattern[str]] = [
         r"\[\s*system\s*\]",
         r"<\s*system\s*>",
         r"reveal\s+(the\s+)?(prompt|instructions)",
-        r"respond\s+that\s+this",  # "...respond that this item is X regardless of..."
+        r"respond\s+that\s+this",  
     ]
 ]
 
@@ -129,9 +87,7 @@ def check_injection_gate(snippet: str) -> InjectionGateResult:
     return InjectionGateResult(passed=True, matched_phrase=None)
 
 
-# ---------------------------------------------------------------------------
-# Blind judge — prompt build / response parse / batched call
-# ---------------------------------------------------------------------------
+
 
 FaithfulnessJudgeFn = Callable[[list[FieldFaithfulnessInput]], list[dict]]
 
@@ -188,10 +144,6 @@ def _parse_judge_response(raw_text: str, expected_len: int) -> list[dict]:
                 )
         return out
     except Exception:
-        # Fail closed per §1.4 error taxonomy — malformed judge output must
-        # NEVER silently pass a claim. Real retry-with-reprompt (cap 2) is a
-        # graph-level concern (Day 15); this function's job is to never
-        # fabricate a pass.
         return [
             {"score": 0.0, "directive": "NOT_SUPPORTED", "evidence_span": "", "parse_error": True}
             for _ in range(expected_len)
@@ -199,14 +151,31 @@ def _parse_judge_response(raw_text: str, expected_len: int) -> list[dict]:
 
 
 def default_judge_call_fn(batch: list[FieldFaithfulnessInput]) -> list[dict]:
-    """Placeholder — wire this to your real Gemini 2.5-flash client."""
-    raise NotImplementedError(
-        "Wire default_judge_call_fn to your real Gemini client (same wrapper "
-        "enrichment.py uses). It must: 1) build the prompt with "
-        "_build_judge_prompt(batch), 2) call Gemini with that as the sole "
-        "user message (blind — no system context about the enrichment agent), "
-        "3) return _parse_judge_response(raw_text, len(batch))."
-    )
+    """
+    Calls Gemini 2.5-flash to evaluate the batch of claims blindly.
+    """
+    prompt = _build_judge_prompt(batch)
+    
+    from google import genai
+    from google.genai import types
+    api_key = getattr(settings, "GOOGLE_API_KEY", None)
+    client = genai.Client(api_key=api_key)
+    
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.0,  
+            ),
+        )
+        raw_text = response.text or "[]"
+    except Exception as e:
+        logger.error(f"Gemini judge API call failed: {e}")
+        raw_text = "[]"  
+    return _parse_judge_response(raw_text, len(batch))
+   
 
 
 def _build_field_reason(
@@ -250,6 +219,7 @@ def evaluate_field_faithfulness_batch(
         gate = check_injection_gate(pair.retrieved_snippet)
         if not gate.passed:
             results[i] = FieldEvalScore(
+                catalog_id=pair.catalog_id,
                 field_name=pair.field_name,
                 claimed_value=pair.claimed_value,
                 faithfulness_score=0.0,
@@ -273,6 +243,7 @@ def evaluate_field_faithfulness_batch(
             score = max(0.0, min(1.0, float(verdict_raw.get("score", 0.0))))
             accept = score >= threshold
             results[orig_i] = FieldEvalScore(
+                catalog_id=pair.catalog_id,
                 field_name=pair.field_name,
                 claimed_value=pair.claimed_value,
                 faithfulness_score=score,
@@ -295,7 +266,9 @@ if __name__ == "__main__":
     def _judge_that_must_not_be_called(batch):
         raise AssertionError("Injection gate failed to short-circuit — judge was called on a poisoned pair.")
 
+
     poisoned_pair = FieldFaithfulnessInput(
+        catalog_id="item-1",
         field_name="material",
         claimed_value="100% organic cotton",
         retrieved_snippet=(
@@ -318,7 +291,7 @@ if __name__ == "__main__":
         return [{"score": 0.95, "directive": "SUPPORTED", "evidence_span": "colour: navy blue"} for _ in batch]
 
     clean_pair = FieldFaithfulnessInput(
-        field_name="color", claimed_value="navy blue", retrieved_snippet="colour: navy blue, size M-XL"
+       catalog_id="item-2", field_name="color", claimed_value="navy blue", retrieved_snippet="colour: navy blue, size M-XL"
     )
     clean_result = evaluate_field_faithfulness_batch([clean_pair], judge_call_fn=_mock_judge, batch_size=8)
     assert clean_result[0].verdict == "ACCEPT"
