@@ -8,6 +8,9 @@ class EnrichmentResolution(str, Enum):
     LEFT_FLAGGED = "left_flagged"  # no reliable source found -> human review, never guessed
     NO_ACTION_NEEDED = "no_action_needed"  # field was already present, nothing to do
 
+class EnrichmentSource(BaseModel):
+    url: str
+    snippet: str
 
 class FieldEnrichment(BaseModel):
     field_name: str
@@ -17,6 +20,7 @@ class FieldEnrichment(BaseModel):
     source_url: str | None = Field(
         default=None, description="Grounding source — required when resolution == filled_grounded"
     )
+    source: EnrichmentSource | None = None
     faithfulness_score: float | None = Field(default=None, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
