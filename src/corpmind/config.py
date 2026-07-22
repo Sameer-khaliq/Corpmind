@@ -38,7 +38,8 @@ class Settings(BaseSettings):
     escalation_model: str = "llama-3.3-70b-versatile"
     judge_model: str = "gemini-2.5-flash"
     judge_fallback_model: str = "llama-3.3-70b-versatile"
-
+    ENRICHMENT_CONFIDENCE_THRESHOLD: float = 0.6   
+    FAITHFULNESS_THRESHOLD: float = 0.85           
     # --- Thresholds (§1 of the implementation plan) --------------------
     faithfulness_threshold: float = 0.85
     match_confidence_high: float = Field(
