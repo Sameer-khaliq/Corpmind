@@ -1,144 +1,35 @@
-"""
-agents/evaluation_agent.py
-
-CorpMind — Evaluation Agent
-============================
-
-Day 12 (field-eval half): wraps eval/ragas_harness.py's blind judge to score
-every FILLED_GROUNDED enrichment field; LEFT_FLAGGED / NO_ACTION_NEEDED
-fields pass through as trivial ACCEPT (no grounded claim was made, so there
-is nothing for the judge to falsify).
-
-Day 13 (match-eval half, same file — kept as a unit with Day 12 per the
-plan's stopping-point note): MatchEvalScore from the RRF fusion score itself
-(calibrated against a gold set — NOT RAGAS machinery, per §1.1's deviation),
-LLM disambiguation reserved only for AMBIGUOUS matches, and overall_verdict
-aggregation: ACCEPT iff match_eval AND every field_eval is ACCEPT.
-
-Depends on eval/ragas_harness.py (Verdict, FieldFaithfulnessInput,
-FieldEvalScore, evaluate_field_faithfulness_batch). ragas_harness.py has no
-dependency back on this file — one-directional, no circularity.
-
-WIRING YOU MUST DO before this runs for real:
-  1. Blind-judge client — wired in ragas_harness.py's default_judge_call_fn,
-     not here. Pass your real judge_call_fn into evaluate_item()/
-     evaluate_enrichment_result() once that's done.
-  2. `disambiguation_fn` passed into evaluate_match()/evaluate_item() — plug
-     in your real llama-3.3-70b-versatile call per §1.5's routing rule. It
-     must return {"resolved": bool, "confidence": float, "reasoning": str}.
-  3. Config attribute names (`match_rrf_low_cutoff`, `match_rrf_high_cutoff`,
-     `disambiguation_confidence_threshold`) are guessed to match the
-     documented config.py pattern — confirm real names, fix the getattr()
-     fallback in `_disambiguation_confidence_threshold()` if different.
-  4. The `except ModuleNotFoundError` block below mirrors what schemas/
-     matching.py and schemas/enrichment.py are documented to contain, so
-     this file is self-testable in isolation. Once you confirm your real
-     schemas match this shape, delete the except block and keep only the
-     `try` import.
-
-Run: uv run python agents/evaluation_agent.py
-"""
-
 from __future__ import annotations
-
 from enum import Enum
 from typing import Callable
-
 from pydantic import BaseModel, Field, model_validator
+import logging
+# Strict internal package imports
+from corpmind.eval.ragas_harness import (  
+    FaithfulnessJudgeFn,
+    FieldEvalScore,  
+    FieldFaithfulnessInput,
+    Verdict,
+    default_judge_call_fn,
+    evaluate_field_faithfulness_batch,
+)
+from corpmind.config import settings  
+from corpmind.schemas.enrichment import (  
+    EnrichmentResolution,
+    EnrichmentResult,
+    EnrichmentSource,
+    FieldEnrichment,
+)
+from corpmind.schemas.matching import MatchDecision, MatchResult
 
-try:
-    from corpmind.eval.ragas_harness import (  # type: ignore
-        FaithfulnessJudgeFn,
-        FieldEvalScore,
-        FieldFaithfulnessInput,
-        Verdict,
-        default_judge_call_fn,
-        evaluate_field_faithfulness_batch,
-    )
-except ModuleNotFoundError:
-    # Sandbox fallback so this file is runnable standalone next to
-    # eval/ragas_harness.py without the corpmind package installed.
-    from ragas_harness import (  # type: ignore
-        FaithfulnessJudgeFn,
-        FieldEvalScore,
-        FieldFaithfulnessInput,
-        Verdict,
-        default_judge_call_fn,
-        evaluate_field_faithfulness_batch,
-    )
-
-try:
-    from corpmind.config import settings  # type: ignore
-    from corpmind.logging_config import get_logger  # type: ignore
-    from corpmind.schemas.enrichment import (  # type: ignore
-        EnrichmentResolution,
-        EnrichmentResult,
-        EnrichmentSource,
-        FieldEnrichment,
-    )
-    from corpmind.schemas.matching import MatchDecision, MatchResult  # type: ignore
-
-    logger = get_logger(__name__)
-    _REAL_IMPORTS = True
-except ModuleNotFoundError:
-    _REAL_IMPORTS = False
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    class MatchDecision(str, Enum):
-        NEW_PRODUCT = "NEW_PRODUCT"
-        MATCHED_EXISTING = "MATCHED_EXISTING"
-        AMBIGUOUS = "AMBIGUOUS"
-
-    class EnrichmentResolution(str, Enum):
-        FILLED_GROUNDED = "filled_grounded"
-        LEFT_FLAGGED = "left_flagged"
-        NO_ACTION_NEEDED = "no_action_needed"
-
-    class MatchResult(BaseModel):
-        catalog_id: str
-        rrf_score: float
-        decision: MatchDecision
-
-    class EnrichmentSource(BaseModel):
-        url: str | None = None
-        snippet: str = ""
-
-    class FieldEnrichment(BaseModel):
-        field_name: str
-        original_value: str | None = None
-        enriched_value: str | None = None
-        resolution: EnrichmentResolution
-        source_url: str | None = None
-        source: EnrichmentSource | None = None
-        faithfulness_score: float | None = None
-
-    class EnrichmentResult(BaseModel):
-        catalog_id: str
-        field_results: list[FieldEnrichment] = Field(default_factory=list)
-
-    class _StubSettings:
-        match_rrf_low_cutoff = 0.35
-        match_rrf_high_cutoff = 0.65
-        disambiguation_confidence_threshold = 0.75
-
-    settings = _StubSettings()
-
+logger = logging.getLogger(__name__)
+_REAL_IMPORTS = True
 
 def _disambiguation_confidence_threshold() -> float:
     return float(getattr(settings, "disambiguation_confidence_threshold", 0.75))
 
 
-# ---------------------------------------------------------------------------
-# Schemas — MatchEvalScore / EvaluationRecord
-# (mirrors schemas/evaluation.py naming from Day 2 — reconcile if it already
-# has these exact fields; add if it doesn't. FieldEvalScore lives in
-# ragas_harness.py, imported above.)
-# ---------------------------------------------------------------------------
-
-
 class MatchEvalScore(BaseModel):
+    catalog_id: str | None = None
     rrf_score: float
     decision: MatchDecision
     confidence: float = Field(ge=0.0, le=1.0)
@@ -166,16 +57,11 @@ class EvaluationRecord(BaseModel):
             )
         return self
 
-
-# ---------------------------------------------------------------------------
-# Day 12 (field-eval half) — wraps ragas_harness for real EnrichmentResults
-# ---------------------------------------------------------------------------
-
-
-def _trivial_field_eval(fe: FieldEnrichment) -> FieldEvalScore:
+def _trivial_field_eval(catalog_id: str, fe: FieldEnrichment) -> FieldEvalScore:
     """LEFT_FLAGGED / NO_ACTION_NEEDED fields made no grounded claim — nothing
     for the judge to falsify, so they pass through as ACCEPT without a call."""
     return FieldEvalScore(
+        catalog_id=catalog_id,
         field_name=fe.field_name,
         claimed_value=fe.enriched_value or "",
         faithfulness_score=1.0,
@@ -205,6 +91,7 @@ def evaluate_enrichment_result(
         if fe.resolution == EnrichmentResolution.FILLED_GROUNDED:
             to_judge_inputs.append(
                 FieldFaithfulnessInput(
+                    catalog_id=result.catalog_id,
                     field_name=fe.field_name,
                     claimed_value=fe.enriched_value or "",
                     retrieved_snippet=(fe.source.snippet if fe.source else ""),
@@ -212,7 +99,7 @@ def evaluate_enrichment_result(
             )
             to_judge_positions.append(i)
         else:
-            output[i] = _trivial_field_eval(fe)
+            output[i] = _trivial_field_eval(result.catalog_id, fe)
 
     judged = evaluate_field_faithfulness_batch(to_judge_inputs, judge_call_fn, batch_size, threshold)
     for pos, score in zip(to_judge_positions, judged):
@@ -220,22 +107,75 @@ def evaluate_enrichment_result(
 
     return [o for o in output if o is not None]
 
-
-# ---------------------------------------------------------------------------
-# Day 13 (match-eval half) — RRF confidence + disambiguation + aggregation
-# ---------------------------------------------------------------------------
-
 DisambiguationFn = Callable[[MatchResult], dict]
 
 
+def default_disambiguation_fn(match_result: MatchResult) -> dict:
+    """
+    Real implementation — calls Groq's llama-3.3-70b-versatile to resolve an
+    AMBIGUOUS match, per §1.5's model routing rule.
+ 
+    FLAGGED PLAINLY: MatchResult here only carries catalog_id / rrf_score /
+    decision — no actual item-vs-candidate product fields (title, brand,
+    category, etc.). Without those an LLM has nothing real to compare, and
+    this call degrades to guessing off a bare number. The getattr() calls
+    below fall back gracefully so this won't crash if those fields are
+    missing, but it also won't be doing genuine disambiguation until your
+    real corpmind.schemas.matching.MatchResult actually carries that data
+    (or it's threaded through some other way). Confirm this before trusting
+    the AMBIGUOUS path in production.
+    """
+    import json
+ 
+    from groq import Groq
+ 
+    client = Groq(api_key=settings.GROQ_API_KEY)
+ 
+    item_desc = getattr(match_result, "item_summary", None) or getattr(match_result, "normalized_product", None)
+    candidate_desc = getattr(match_result, "candidate_summary", None) or getattr(match_result, "matched_candidate", None)
+ 
+    prompt = (
+        "You are resolving an AMBIGUOUS product match in a catalog "
+        "reconciliation pipeline. The hybrid-search RRF fusion score for "
+        f"this pair was {match_result.rrf_score:.4f}, which fell between the "
+        "two decision cutoffs (too high to call a new product, too low to "
+        "call a confident duplicate).\n\n"
+        f"Item being matched:\n{item_desc if item_desc else '(no item detail available — rrf_score only)'}\n\n"
+        f"Candidate existing catalog entry (catalog_id={match_result.catalog_id}):\n"
+        f"{candidate_desc if candidate_desc else '(no candidate detail available — rrf_score only)'}\n\n"
+        "Decide whether these are the SAME real-world product (described "
+        "differently across suppliers) or DIFFERENT products. Precision "
+        "matters more than recall — merging two different products is worse "
+        "than missing a duplicate.\n\n"
+        'Return ONLY a JSON object: {"resolved": <bool>, "confidence": '
+        '<float 0.0-1.0>, "reasoning": "<one or two sentences>"}\n'
+        '"resolved": true only if you are genuinely confident either way. If '
+        "the available detail is insufficient to judge, return "
+        "resolved=false with low confidence rather than guessing."
+    )
+ 
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.0,
+        response_format={"type": "json_object"},
+    )
+ 
+    raw_text = response.choices[0].message.content
+ 
+    try:
+        parsed = json.loads(raw_text)
+        return {
+            "resolved": bool(parsed.get("resolved", False)),
+            "confidence": float(parsed.get("confidence", 0.0)),
+            "reasoning": str(parsed.get("reasoning", "no reasoning returned")),
+        }
+    except Exception as e:
+        logger.warning("disambiguation response could not be parsed for %s: %s", match_result.catalog_id, e)
+        return {"resolved": False, "confidence": 0.0, "reasoning": f"unparseable disambiguation response: {raw_text[:200]}"}
+
+
 def rrf_to_confidence(rrf_score: float, low_cutoff: float, high_cutoff: float) -> float:
-    """
-    Placeholder linear calibration mapping raw RRF fusion score onto [0,1].
-    Per §1.1, the REAL calibration curve must be fit against the initial
-    small labeled gold set (not built yet) — swap this out once that exists.
-    Kept as a stable interface so Day 14's graph wiring and Day 22's
-    regression suite aren't blocked waiting on it.
-    """
     if high_cutoff <= low_cutoff:
         raise ValueError("high_cutoff must be greater than low_cutoff")
     if rrf_score <= low_cutoff:
@@ -260,15 +200,13 @@ def evaluate_match(
     match_result: MatchResult,
     low_cutoff: float,
     high_cutoff: float,
-    disambiguation_fn: DisambiguationFn | None = None,
+    disambiguation_fn: DisambiguationFn = default_disambiguation_fn,
 ) -> MatchEvalScore:
     confidence = rrf_to_confidence(match_result.rrf_score, low_cutoff, high_cutoff)
 
     if match_result.decision != MatchDecision.AMBIGUOUS:
-        # Already confidently routed by the two-cutoff decision in the
-        # matching agent (Day 7-8) — eval half just packages the confidence,
-        # it does not re-decide.
         return MatchEvalScore(
+            catalog_id=match_result.catalog_id,
             rrf_score=match_result.rrf_score,
             decision=match_result.decision,
             confidence=confidence,
@@ -288,6 +226,7 @@ def evaluate_match(
 
     if resolved and disambig_confidence >= _disambiguation_confidence_threshold():
         return MatchEvalScore(
+            catalog_id=match_result.catalog_id,
             rrf_score=match_result.rrf_score,
             decision=match_result.decision,
             confidence=disambig_confidence,
@@ -300,6 +239,7 @@ def evaluate_match(
         )
 
     return MatchEvalScore(
+        catalog_id=match_result.catalog_id,
         rrf_score=match_result.rrf_score,
         decision=match_result.decision,
         confidence=disambig_confidence,
@@ -313,9 +253,6 @@ def evaluate_match(
 
 
 def aggregate_verdict(match_eval: MatchEvalScore, field_evals: list[FieldEvalScore]) -> tuple[Verdict, str]:
-    """ACCEPT iff match_eval ACCEPT and every field_eval ACCEPT. This
-    function is what Day 13's done-checkpoint actually tests — not the
-    individual sub-scores."""
     failing_fields = [fe for fe in field_evals if fe.verdict != "ACCEPT"]
     if match_eval.verdict == "ACCEPT" and not failing_fields:
         return "ACCEPT", "ACCEPT — match_eval and all field_evals passed."
@@ -328,13 +265,6 @@ def aggregate_verdict(match_eval: MatchEvalScore, field_evals: list[FieldEvalSco
         reasons.append(f"field_eval(s) rejected for: {names}")
     return "REJECT_TO_REVIEW", "REJECT_TO_REVIEW — " + "; ".join(reasons)
 
-
-# ---------------------------------------------------------------------------
-# Top-level orchestrator — the node LangGraph's evaluation gate calls
-# (Day 14 wiring point)
-# ---------------------------------------------------------------------------
-
-
 def evaluate_item(
     catalog_id: str,
     match_result: MatchResult,
@@ -342,7 +272,7 @@ def evaluate_item(
     low_cutoff: float,
     high_cutoff: float,
     judge_call_fn: FaithfulnessJudgeFn = default_judge_call_fn,
-    disambiguation_fn: DisambiguationFn | None = None,
+    disambiguation_fn: DisambiguationFn = default_disambiguation_fn,
     batch_size: int = 8,
     threshold: float | None = None,
 ) -> EvaluationRecord:
@@ -361,22 +291,8 @@ def evaluate_item(
         overall_verdict=overall_verdict,
         overall_reason=overall_reason,
     )
-
-
-# ---------------------------------------------------------------------------
-# Smoke tests — Day 13's named Done checkpoint, plus one bonus check for the
-# AMBIGUOUS/disambiguation path so it isn't left silently untested.
-# (Day 12's own checkpoint already lives in eval/ragas_harness.py — this file
-# re-proves it end-to-end through evaluate_enrichment_result too.)
-# Run: uv run python agents/evaluation_agent.py
-# ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
 
-    # === Day 13 checkpoint ==================================================
-    # Mixed case: good match, one faithful field, one unfaithful field.
-    # Tests the AGGREGATION — match_eval alone would ACCEPT, but one bad
-    # field must still flip the overall verdict to REJECT_TO_REVIEW.
     good_match = MatchResult(catalog_id="cat-001", rrf_score=0.9, decision=MatchDecision.MATCHED_EXISTING)
 
     def _mock_judge(batch: list[FieldFaithfulnessInput]) -> list[dict]:
@@ -393,26 +309,32 @@ if __name__ == "__main__":
         field_results=[
             FieldEnrichment(
                 field_name="color",
+                original_value="None",
                 enriched_value="navy blue",
                 resolution=EnrichmentResolution.FILLED_GROUNDED,
                 source_url="https://example.com/a",
                 source=EnrichmentSource(url="https://example.com/a", snippet="colour: navy blue, size M-XL"),
+                 faithfulness_score=0.95,
             ),
             FieldEnrichment(
                 field_name="material",
+                original_value="None",
                 enriched_value="100% cotton",
                 resolution=EnrichmentResolution.FILLED_GROUNDED,
                 source_url="https://example.com/b",
                 source=EnrichmentSource(
                     url="https://example.com/b", snippet="material composition not listed on this page"
                 ),
+                faithfulness_score=0.10,
             ),
             FieldEnrichment(
                 field_name="size",
+                original_value="None",
                 enriched_value=None,
                 resolution=EnrichmentResolution.LEFT_FLAGGED,
                 source_url=None,
                 source=None,
+                faithfulness_score=None,
             ),
         ],
     )
@@ -434,7 +356,7 @@ if __name__ == "__main__":
     print("[Day 13] PASS — mixed case aggregated correctly:", day13_record.overall_reason)
 
   
-    ambiguous_match = MatchResult(catalog_id="cat-002", rrf_score=0.5, decision=MatchDecision.AMBIGUOUS)
+    ambiguous_match = MatchResult(rrf_score=0.5, decision=MatchDecision.AMBIGUOUS)
 
     def _mock_disambiguation(match_result: MatchResult) -> dict:
         return {"resolved": True, "confidence": 0.9, "reasoning": "title + brand match after LLM comparison"}
