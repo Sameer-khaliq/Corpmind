@@ -433,7 +433,7 @@ if __name__ == "__main__":
     assert day13_record.overall_verdict == "REJECT_TO_REVIEW", "aggregation must reject even though match_eval alone would accept"
     print("[Day 13] PASS — mixed case aggregated correctly:", day13_record.overall_reason)
 
-    # === Bonus check (not a named checkpoint, but proves this path isn't dead) ==
+  
     ambiguous_match = MatchResult(catalog_id="cat-002", rrf_score=0.5, decision=MatchDecision.AMBIGUOUS)
 
     def _mock_disambiguation(match_result: MatchResult) -> dict:
