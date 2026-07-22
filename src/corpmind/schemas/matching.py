@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 class MatchDecision(str, Enum):
     NEW_PRODUCT = "NEW_PRODUCT"
     MATCHED_EXISTING = "MATCHED_EXISTING"
-    AMBIGUOUS = "AMBIGUOUS"  
+    AMBIGUOUS = "AMBIGUOUS"
 
 
 class MatchResult(BaseModel):
@@ -14,24 +14,26 @@ class MatchResult(BaseModel):
 
     rrf_score is the actual confidence signal (calibrated against the gold
     set) — NOT a RAGAS score. RAGAS faithfulness is reserved for Enrichment's
-    grounding claims only; see schemas -enrichment.py.
+    grounding claims only; see schemas/enrichment.py.
     """
 
-    candidate_supplier_id: str
-    candidate_source_row_index: int
-    matched_catalog_id: str | None = Field(
-        default=None, description="Set only when decision == MATCHED_EXISTING"
+    catalog_id: str | None = Field(
+        default=None,
+        description="Set for MATCHED_EXISTING (reused id) and NEW_PRODUCT "
+        "(freshly minted id, shared across an intra-batch duplicate cluster). "
+        "Left None only for AMBIGUOUS, where no id has been assigned yet.",
     )
     rrf_score: float
     decision: MatchDecision
 
     @model_validator(mode="after")
-    def matched_id_consistency(self) -> "MatchResult":
-        if self.decision == MatchDecision.MATCHED_EXISTING and self.matched_catalog_id is None:
-            raise ValueError("decision is MATCHED_EXISTING but matched_catalog_id is not set")
-        if self.decision != MatchDecision.MATCHED_EXISTING and self.matched_catalog_id is not None:
+    def catalog_id_consistency(self) -> "MatchResult":
+        needs_id = self.decision in (MatchDecision.MATCHED_EXISTING, MatchDecision.NEW_PRODUCT)
+        if needs_id and self.catalog_id is None:
+            raise ValueError(f"decision is {self.decision} but catalog_id is not set")
+        if not needs_id and self.catalog_id is not None:
             raise ValueError(
-                f"decision is {self.decision} but matched_catalog_id is set — "
-                "only MATCHED_EXISTING should carry a target id"
+                f"decision is {self.decision} but catalog_id is set — "
+                "AMBIGUOUS should not carry a target id"
             )
         return self
