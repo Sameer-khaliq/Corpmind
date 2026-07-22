@@ -48,7 +48,9 @@ class Settings(BaseSettings):
     match_confidence_low: float = Field(
         default=0.45, description="RRF score below this -> NEW_PRODUCT; between -> AMBIGUOUS"
     )
-
+    disambiguation_confidence_threshold: float = Field(
+        default=0.75, description="Confidence threshold for disambiguation"
+    )
     # --- Config file paths ---------------------------------------------
     taxonomy_path: Path = Path("config/taxonomy.yaml")
     rate_limits_path: Path = Path("config/rate_limits.yaml")
