@@ -99,8 +99,36 @@ def reciprocal_rank_fusion(dense_ids: list[str], sparse_ids: list[str], k: int =
         fused[doc_id] = fused.get(doc_id, 0.0) + 1.0 / (k + rank + 1)
     return sorted(fused.items(), key=lambda x: x[1], reverse=True)
 
+
+def _cosine_to_candidates(query_embedding: list[float], candidate_ids: list[str]) -> dict[str, float]:
+    """Raw cosine similarity between the query and each candidate's stored
+    embedding. RRF rank is good for combining dense+sparse recall into a
+    shortlist, but it discards magnitude — with a small candidate pool
+    (e.g. one existing catalog entry) every candidate ends up at rank 0
+    regardless of how good the match actually is, so a rank-based score
+    can't discriminate confidence. This gives matching.py's cutoffs a
+    signal that's stable regardless of catalog/candidate-pool size.
+    """
+    if not candidate_ids:
+        return {}
+    fetched = _collection.get(ids=candidate_ids, include=["embeddings"])
+    q = np.array(query_embedding, dtype=float)
+    q = q / np.linalg.norm(q)
+    sims: dict[str, float] = {}
+    for cid, emb in zip(fetched["ids"], fetched["embeddings"]):
+        v = np.array(emb, dtype=float)
+        v = v / np.linalg.norm(v)
+        sims[cid] = float(np.dot(q, v))
+    return sims
+
+
 def query_store(query_text: str, metadata_filter: dict | None = None, top_k: int = 10) -> list[tuple[str, float]]:
     query_embedding = _embed_texts([query_text])[0]
     dense_ids = _dense_search(query_embedding, metadata_filter, top_k)
     sparse_ids = _sparse_search(query_text, metadata_filter, top_k)
-    return reciprocal_rank_fusion(dense_ids, sparse_ids)[:top_k]
+
+    
+    shortlisted_ids = [doc_id for doc_id, _ in reciprocal_rank_fusion(dense_ids, sparse_ids)[:top_k]]
+    similarities = _cosine_to_candidates(query_embedding, shortlisted_ids)
+    scored = [(doc_id, similarities.get(doc_id, 0.0)) for doc_id in shortlisted_ids]
+    return sorted(scored, key=lambda x: x[1], reverse=True)
