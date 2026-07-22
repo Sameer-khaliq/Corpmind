@@ -1,30 +1,3 @@
-# src/corpmind/agents/matching_agent.py
-"""
-Days 7-8 - Matching agent, two-phase design.
-
-Phase A (parallel, read-only, per-item via Send dispatch):
-    har naye batch item ke candidate matches dhoondta hai:
-      - EXISTING catalog ke against (Day 6's vector_store.query_store)
-      - is SAME BATCH ke doosre items ke against (pairwise, batch-local
-        embedding matrix + BM25 index se jo dispatch se PEHLE ek baar banta hai)
-    -> scored CandidatePair objects, koi decision nahi, koi write nahi.
-
-Phase B (sequential, ek hi node, join ke baad):
-    - high RRF cutoff se UPAR wale pairs se ek graph banao
-    - union-find se connected components nikalo
-    - har cluster: agar existing catalog_id hai toh wahi reuse karo, warna
-      POORE cluster ke liye EK naya id mint karo (yehi wajah hai ki intra-batch
-      duplicates collapse hote hain, har ek apna alag id nahi mangta)
-    - jo confident cluster mein nahi aaya: agar best individual score
-      low cutoff se upar hai -> AMBIGUOUS, warna -> NEW_PRODUCT akela
-    - naye items ko persistent vector store mein likhta hai (sirf jab
-      ids settle ho chuke hon)
-
-Stopping point: must not split - Phase A ko Phase B ke bina wire karna
-silently har item ke liye alag duplicate catalog_id mint karta hai,
-koi error nahi, koi warning nahi.
-"""
-
 from __future__ import annotations
 
 import uuid
@@ -35,9 +8,9 @@ import numpy as np
 from rank_bm25 import BM25Okapi
 
 from corpmind.config import settings
-from corpmind.retrieval import vector_store as vs 
+from corpmind.retrieval import vector_store as vs
 from corpmind.schemas.extraction import NormalizedProduct
-from corpmind.schemas.matching import MatchResult, MatchDecision  
+from corpmind.schemas.matching import MatchResult, MatchDecision
 
 
 HIGH_CUTOFF = getattr(settings, "MATCH_HIGH_CUTOFF", 0.90)
@@ -57,20 +30,18 @@ def _product_text(p: NormalizedProduct) -> str:
     return " ".join(str(x) for x in parts if x)
 
 
-
 def prepare_batch_index(items: list[NormalizedProduct]) -> dict:
     texts = [_product_text(p) for p in items]
-    ids = [p.item_id for p in items]  
+    ids = [str(p.item_id) for p in items]
     embeddings = np.array(vs._embed_texts(texts))
     norm = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
-    dense_sim = norm @ norm.T  
+    dense_sim = norm @ norm.T
 
     tokenized = [t.lower().split() for t in texts]
     bm25 = BM25Okapi(tokenized) if tokenized else None
 
     return {
         "ids": ids,
-        "id_to_idx": {item_id: i for i, item_id in enumerate(ids)},
         "categories": [p.category for p in items],
         "dense_sim": dense_sim,
         "bm25": bm25,
@@ -82,14 +53,15 @@ def find_candidates_for_item(item: NormalizedProduct, batch_index: dict) -> list
     text = _product_text(item)
     metadata_filter = {"category": item.category}
     candidates: list[CandidatePair] = []
+    
+    current_id = str(item.item_id)
 
     for candidate_id, score in vs.query_store(text, metadata_filter=metadata_filter, top_k=TOP_K_CANDIDATES):
-        candidates.append(CandidatePair(item.item_id, candidate_id, score, candidate_is_existing=True))
-
-    idx = batch_index["ids"].index(item.item_id)
+        candidates.append(CandidatePair(current_id, candidate_id, score, candidate_is_existing=True))
+    idx = batch_index["ids"].index(current_id)
     allowed = [
         i for i, cat in enumerate(batch_index["categories"])
-        if cat == item.category and batch_index["ids"][i] != item.item_id
+        if cat == item.category and batch_index["ids"][i] != current_id
     ]
     if allowed and batch_index["bm25"] is not None:
         dense_row = batch_index["dense_sim"][idx]
@@ -103,14 +75,10 @@ def find_candidates_for_item(item: NormalizedProduct, batch_index: dict) -> list
         sparse_ids = [batch_index["ids"][i] for i in order]
 
         fused = vs.reciprocal_rank_fusion(dense_ids, sparse_ids)
-        shortlisted = [candidate_id for candidate_id, _ in fused[:TOP_K_CANDIDATES]]
-        for candidate_id in shortlisted:
-            cand_idx = batch_index["id_to_idx"][candidate_id]
-            score = float(dense_row[cand_idx])  # raw cosine similarity, not fused rank score
-            candidates.append(CandidatePair(item.item_id, candidate_id, score, candidate_is_existing=False))
+        for candidate_id, score in fused[:TOP_K_CANDIDATES]:
+            candidates.append(CandidatePair(current_id, candidate_id, score, candidate_is_existing=False))
 
     return candidates
-
 
 
 def _mint_catalog_id() -> str:
@@ -119,10 +87,12 @@ def _mint_catalog_id() -> str:
 
 def resolve_batch(
     all_candidate_pairs: list[CandidatePair],
-    new_item_ids: set[str],
+    items: list[NormalizedProduct],
     high_cutoff: float = HIGH_CUTOFF,
     low_cutoff: float = LOW_CUTOFF,
 ) -> dict[str, MatchResult]:
+    new_item_ids = {str(p.item_id) for p in items}
+
     best_score: dict[str, float] = {i: float("-inf") for i in new_item_ids}
     for p in all_candidate_pairs:
         if p.item_id in best_score:
@@ -158,7 +128,6 @@ def resolve_batch(
         if not new_members:
             continue
         if len(existing_members) > 1:
-
             for m in new_members:
                 results[m] = MatchResult(decision=MatchDecision.AMBIGUOUS,
                                           catalog_id=None, rrf_score=best_score[m])
@@ -175,16 +144,19 @@ def resolve_batch(
     for item_id in new_item_ids:
         if item_id not in results:
             if best_score[item_id] > low_cutoff:
+                
                 results[item_id] = MatchResult(decision=MatchDecision.AMBIGUOUS,
                                                 catalog_id=None, rrf_score=best_score[item_id])
             else:
+            
                 results[item_id] = MatchResult(decision=MatchDecision.NEW_PRODUCT,
                                                 catalog_id=_mint_catalog_id(), rrf_score=best_score[item_id])
 
     return results
 
 def write_new_products(items: list[NormalizedProduct], results: dict[str, MatchResult]) -> None:
-    by_item = {item.item_id: item for item in items}
+    
+    by_item = {str(item.item_id): item for item in items}
     seen_catalog_ids: set[str] = set()
     to_add = []
     for item_id, result in results.items():
@@ -198,21 +170,19 @@ def write_new_products(items: list[NormalizedProduct], results: dict[str, MatchR
     ids, texts, metadatas = zip(*to_add)
     vs.add_products(list(ids), list(texts), list(metadatas))
 
+
 def phase_a_node(item_state: dict) -> dict:
-    """Runs once per item, in parallel, via Send. Read-only."""
     item: NormalizedProduct = item_state["item"]
-    batch_index: dict = item_state["batch_index"]  
+    batch_index: dict = item_state["batch_index"]
     pairs = find_candidates_for_item(item, batch_index)
-    return {"candidate_pairs": pairs}  
+    return {"candidate_pairs": pairs}
 
 
 def phase_b_node(batch_state: dict) -> dict:
-    """Runs once, after the join. Owns every decision and every write."""
     items: list[NormalizedProduct] = batch_state["items"]
     all_pairs: list[CandidatePair] = batch_state["candidate_pairs"]
-    new_item_ids = {p.item_id for p in items}
 
-    results = resolve_batch(all_pairs, new_item_ids)
+    results = resolve_batch(all_pairs, items)
     write_new_products(items, results)
 
     return {"match_results": results}
