@@ -1,5 +1,4 @@
 """
-graph/build_graph.py
 
 CorpMind — Graph assembly (Day 14), async (Day 15's latency decision)
 =========================================================================
