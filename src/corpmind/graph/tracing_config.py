@@ -1,5 +1,4 @@
 """
-graph/tracing_config.py
 
 CorpMind — Tracing + retry infrastructure config (Day 15)
 ============================================================
