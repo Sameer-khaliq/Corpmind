@@ -149,9 +149,7 @@ async def _call_maybe_async(fn: Callable, *args, **kwargs):
     return await asyncio.to_thread(fn, *args, **kwargs)
 
 
-# ---------------------------------------------------------------------------
-# Injectable hook types + stub defaults
-# ---------------------------------------------------------------------------
+
 
 IngestionFn = Callable[..., Any]
 ExtractionFn = Callable[..., Any]
