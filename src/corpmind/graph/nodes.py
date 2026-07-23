@@ -136,9 +136,6 @@ except ModuleNotFoundError:
         report: dict | None
 
 
-# ---------------------------------------------------------------------------
-# Concurrency cap + sync/async bridging
-# ---------------------------------------------------------------------------
 
 _SEMAPHORE = asyncio.Semaphore(max_concurrent_calls())
 
