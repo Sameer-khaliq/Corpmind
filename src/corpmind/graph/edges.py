@@ -50,7 +50,7 @@ def route_after_matching(state: BatchState) -> list[Send]:
       - NEW_PRODUCT / AMBIGUOUS -> evaluate_only
 
     Both target nodes converge into the same `eval_out` accumulator key, so
-    the join after this fan-out is implicit regardless of which branch each
+    the join after this fan out is implicit regardless of which branch each
     item took.
     """
     sends: list[Send] = []
