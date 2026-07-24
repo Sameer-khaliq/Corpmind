@@ -1,5 +1,5 @@
 """
-orchestration/batch_runner.py
+utils/batch_runner.py
 
 CorpMind — Batch runner (Day 16)
 ====================================
@@ -75,7 +75,7 @@ except ModuleNotFoundError:
     settings = _StubSettings()  # type: ignore
 
 try:
-    from corpmind.orchestration.rate_limiter import (  # type: ignore
+    from corpmind.utils.rate_limiter import (  # type: ignore
         ModelLimits,
         _reset_registry_for_testing,
         assert_rate_not_exceeded,
@@ -144,7 +144,7 @@ async def _load_test() -> None:
 
     @rate_limited("extraction_model", estimate_tokens=10)
     async def mocked_extraction_fn(raw_row: dict) -> dict:
-        # No real API call  this is the mocked-LLM part of the checkpoint.
+        # No real API call — this is the mocked-LLM part of the checkpoint.
         # rate_limited() still gates it through the real token-bucket logic,
         # which is exactly what's under test here.
         call_timestamps.append(time.monotonic() - t_start)
