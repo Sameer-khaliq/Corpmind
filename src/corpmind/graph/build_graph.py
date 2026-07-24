@@ -95,7 +95,7 @@ except ModuleNotFoundError:
             self.conditional_edges.append((source, router, targets))
             return self
 
-        def compile(self):
+        def compile(self, **kwargs):
             return _ManualGraphRunner(self)
 
 
@@ -221,7 +221,7 @@ class _ManualGraphRunner:
 async def _main() -> None:
     # configure_tracing()  # WIRING: uncomment once LANGCHAIN_API_KEY is set — skipped here to avoid failing loud in sandbox
 
-    compiled = build_graph().compile(debug=True)  # DEBUG: temporary — shows internal step trace, remove once the None-return mystery is solved
+    compiled = build_graph().compile(debug=True)  # DEBUG: temporary, checking if this is the same or a different node this time
 
     # === Day 14 checkpoint — single item flows end-to-end ===================
     single_item_input: BatchState = {  # type: ignore[typeddict-item]
@@ -232,14 +232,6 @@ async def _main() -> None:
         }
     }
     final_state = await compiled.ainvoke(single_item_input)
-    print("DEBUG final_state type:", type(final_state), flush=True)
-    print("DEBUG final_state value:", final_state, flush=True)
-    assert final_state is not None, (
-        "compiled.ainvoke() returned None — this means langgraph's real API "
-        "differs from what build_graph() assumes somewhere (Send dispatch, "
-        "add_conditional_edges, or the state schema). Check `uv pip show "
-        "langgraph` and compare against the graph wiring in build_graph()."
-    )
     assert len(final_state.get("phase_a_out", [])) == 1
     assert len(final_state.get("matched_items", [])) == 1
     # single item, index 0 -> stub Phase B assigns NEW_PRODUCT (i % 3 != 2, i % 5 != 4)
