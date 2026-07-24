@@ -1,0 +1,18 @@
+models:
+  llama-3.1-8b-instant:
+    rpm: 30
+    tpm: 6000
+  llama-3.3-70b-versatile:
+    rpm: 30
+    tpm: 12000
+  gemini-2.5-flash:
+    rpm: 15
+    tpm: 32000
+  gemini-embeddings-001:
+    rpm: 60
+    tpm: 20000
+
+providers:
+  tavily:
+    rpm: 100
+    tpm: null
