@@ -144,7 +144,7 @@ async def _load_test() -> None:
 
     @rate_limited("extraction_model", estimate_tokens=10)
     async def mocked_extraction_fn(raw_row: dict) -> dict:
-        # No real API call — this is the mocked-LLM part of the checkpoint.
+        # No real API call  this is the mocked-LLM part of the checkpoint.
         # rate_limited() still gates it through the real token-bucket logic,
         # which is exactly what's under test here.
         call_timestamps.append(time.monotonic() - t_start)
