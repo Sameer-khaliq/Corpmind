@@ -14,12 +14,13 @@ retries, which cost more wall-clock time than they save.
 WIRING / VERIFICATION YOU MUST DO:
   1. `classify_api_exception`'s checks are generic — adjust to your real
      client SDKs' actual exception types.
-  2. `RetryPolicy` field names / `add_node(retry=...)` signature — verify
-     against your installed langgraph version.
+  2. `RetryPolicy` field names / `add_node(retry_policy=...)` — CONFIRMED
+     against real langgraph 1.2.9's actual signature (build_graph.py had
+     the wrong kwarg name, `retry=`, fixed there).
   3. `settings.max_concurrent_llm_calls` — add this to config.py if it
      doesn't exist yet; defaults to 10 here if missing. This is THE knob
      that trades latency against rate-limit risk — tune it against your
-     real Groq/Gemini/Tavily plan limits.
+     real Groq/Gemini/Tavily plan limits, not a guess.
 """
 
 from __future__ import annotations
@@ -29,9 +30,9 @@ from dataclasses import dataclass
 
 try:
     from corpmind.config import settings  # type: ignore
-    from corpmind.logging_config import get_logger  # type: ignore
+    import logging  # type: ignore
 
-    logger = get_logger(__name__)
+    logger = logging.getLogger(__name__)
 except ModuleNotFoundError:
     import logging
 
@@ -134,7 +135,7 @@ class TransientAPIError(Exception):
 
 class VectorStoreFatalError(Exception):
     """Class 3a — vector-store error. NEVER retried. Its absence from
-    add_node()'s retry= is the fail-fast behavior — don't attach one."""
+    add_node()'s retry_policy= is the fail-fast behavior — don't attach one."""
 
 
 class SchemaRepairExhaustedError(Exception):
