@@ -345,7 +345,7 @@ def make_extract_and_phase_a_node(
 
 def make_enrich_and_evaluate_node(
     enrichment_fn: EnrichmentFn = _default_enrichment_fn,
-    judge_call_fn=None,  # if overridden: MUST STAY SYNC, same reason as _default_disambiguation_fn above — evaluate_item calls it directly, not awaited
+    judge_call_fn=None,  # if overridden: MUST STAY SYNC,as _default_disambiguation_fn above — evaluate_item calls it directly, not awaited
     disambiguation_fn=None,
     low_cutoff: float = 0.35,
     high_cutoff: float = 0.65,
