@@ -208,9 +208,9 @@ class ModelRateLimiter:
             await self.token_bucket.acquire(estimated_tokens)
 
 
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 # Registry — cached by resolved MODEL NAME, loaded lazily from YAML once.
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 _limiters: dict[str, ModelRateLimiter] = {}
 _loaded_limits: dict[str, ModelLimits] | None = None
