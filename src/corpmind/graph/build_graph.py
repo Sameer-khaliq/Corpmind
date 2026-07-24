@@ -1,4 +1,5 @@
 """
+graph/build_graph.py
 
 CorpMind — Graph assembly (Day 14), async (Day 15's latency decision)
 =========================================================================
@@ -10,7 +11,7 @@ Same two-Send/join-cycle shape as before, now async end-to-end:
       ▼
   ingestion (batch, once)
       │
-      ▼  Send fan-out #1 (per item, async, semaphore-capped)
+      ▼  Send fan-out #1 (per item, async — concurrency capped by config={"max_concurrency": N}, see batch_runner.py)
   extract_and_phase_a  ──► accumulates into phase_a_out
       │
       ▼  JOIN (implicit)
@@ -96,16 +97,51 @@ except ModuleNotFoundError:
             return _ManualGraphRunner(self)
 
 
-def build_graph() -> "StateGraph":
+def build_graph(
+    *,
+    ingestion_fn=None,
+    extraction_fn=None,
+    phase_a_fn=None,
+    phase_b_fn=None,
+    enrichment_fn=None,
+    judge_call_fn=None,
+    disambiguation_fn=None,
+    report_fn=None,
+) -> "StateGraph":
+    """
+    All params optional — omit any of them and that node keeps nodes.py's
+    default stub. This exists so callers (Day 16's batch_runner.py, and
+    eventually real production wiring) can inject real or rate-limited
+    functions without needing to call add_node() twice for the same name
+    (which either errors or silently overwrites, depending on langgraph
+    version — neither is something to rely on).
+    """
     graph = StateGraph(BatchState)
 
-    graph.add_node("ingestion", make_ingestion_node())
-    graph.add_node("extract_and_phase_a", make_extract_and_phase_a_node(), retry=GROQ_RETRY_POLICY)  # see caveat #1
-    graph.add_node("phase_b_matching", make_phase_b_node())  # NO retry — Class 3a fail-fast deliberate
-    graph.add_node("enrich_and_evaluate", make_enrich_and_evaluate_node(), retry=GEMINI_RETRY_POLICY)
-    graph.add_node("evaluate_only", make_evaluate_only_node(), retry=GEMINI_RETRY_POLICY)
+    ingestion_kwargs = {"ingestion_fn": ingestion_fn} if ingestion_fn else {}
+    extract_kwargs = {}
+    if extraction_fn:
+        extract_kwargs["extraction_fn"] = extraction_fn
+    if phase_a_fn:
+        extract_kwargs["phase_a_fn"] = phase_a_fn
+    phase_b_kwargs = {"phase_b_fn": phase_b_fn} if phase_b_fn else {}
+    enrich_kwargs = {}
+    if enrichment_fn:
+        enrich_kwargs["enrichment_fn"] = enrichment_fn
+    if judge_call_fn:
+        enrich_kwargs["judge_call_fn"] = judge_call_fn
+    if disambiguation_fn:
+        enrich_kwargs["disambiguation_fn"] = disambiguation_fn
+    evaluate_only_kwargs = {"disambiguation_fn": disambiguation_fn} if disambiguation_fn else {}
+    report_kwargs = {"report_fn": report_fn} if report_fn else {}
+
+    graph.add_node("ingestion", make_ingestion_node(**ingestion_kwargs))
+    graph.add_node("extract_and_phase_a", make_extract_and_phase_a_node(**extract_kwargs), retry=GROQ_RETRY_POLICY)  # see caveat #1
+    graph.add_node("phase_b_matching", make_phase_b_node(**phase_b_kwargs))  # NO retry — Class 3a fail-fast deliberate
+    graph.add_node("enrich_and_evaluate", make_enrich_and_evaluate_node(**enrich_kwargs), retry=GEMINI_RETRY_POLICY)
+    graph.add_node("evaluate_only", make_evaluate_only_node(**evaluate_only_kwargs), retry=GEMINI_RETRY_POLICY)
     graph.add_node("split_results", make_split_results_node())
-    graph.add_node("report", make_report_node())
+    graph.add_node("report", make_report_node(**report_kwargs))
 
     graph.add_edge(START, "ingestion")
     graph.add_conditional_edges(
@@ -136,16 +172,29 @@ def build_graph() -> "StateGraph":
 
 
 class _ManualGraphRunner:
+    """Sandbox-only stand-in. Supports config={"max_concurrency": N} the
+    same way real langgraph does: caps how many node invocations run at
+    once. abatch() shares ONE semaphore across all its ainvoke() calls
+    (including their internal Send fan-outs) — a combined budget, not a
+    separate N per invocation — to mirror what real langgraph's abatch is
+    documented to do. Verify this assumption against your installed
+    langgraph version; I can't check it live from here."""
+
     def __init__(self, graph: "StateGraph"):
         self.graph = graph
 
-    async def ainvoke(self, initial_state: dict) -> dict:
-        state = dict(initial_state)
+    async def ainvoke(self, initial_state: dict, config: dict | None = None, *, _semaphore: "asyncio.Semaphore | None" = None) -> dict:
+        max_concurrency = (config or {}).get("max_concurrency")
+        semaphore = _semaphore if _semaphore is not None else (asyncio.Semaphore(max_concurrency) if max_concurrency else None)
 
         async def run(name: str, node_state: dict) -> dict:
             fn, _retry = self.graph.nodes[name]
+            if semaphore is not None:
+                async with semaphore:
+                    return await fn(node_state)
             return await fn(node_state)
 
+        state = dict(initial_state)
         state.update(await run("ingestion", state))
 
         phase_a_results = await asyncio.gather(*[run("extract_and_phase_a", item) for item in state.get("raw_items", [])])
@@ -160,6 +209,11 @@ class _ManualGraphRunner:
         state.update(await run("split_results", state))
         state.update(await run("report", state))
         return state
+
+    async def abatch(self, initial_states: list[dict], config: dict | None = None) -> list[dict]:
+        max_concurrency = (config or {}).get("max_concurrency")
+        shared_semaphore = asyncio.Semaphore(max_concurrency) if max_concurrency else None
+        return await asyncio.gather(*[self.ainvoke(s, config=None, _semaphore=shared_semaphore) for s in initial_states])
 
 
 async def _main() -> None:
