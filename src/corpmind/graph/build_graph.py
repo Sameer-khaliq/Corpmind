@@ -40,8 +40,10 @@ WIRING / VERIFICATION YOU MUST DO:
      in one node. Confirm your langgraph version's RetryPolicy can exclude
      VectorStoreFatalError, or split the node — see nodes.py's module
      docstring for the two options.
-  2. `add_node(..., retry=...)` signature — verify against your installed
-     langgraph version.
+  2. `add_node(..., retry_policy=...)` — CONFIRMED against your real installed
+     langgraph 1.2.9: `StateGraph.add_node`'s actual signature uses
+     `retry_policy=`, not `retry=` (an earlier version of this file had the
+     wrong kwarg name — fixed).
   3. Once real agents are wired via `*_fn=`, re-run the timing comparison
      below against REAL API calls (not the artificial asyncio.sleep stubs)
      to get an actual measurement against the 60-90s/100-items target —
@@ -53,8 +55,8 @@ from __future__ import annotations
 import asyncio
 import time
 
-from graph.edges import route_after_matching
-from graph.nodes import (
+from corpmind.graph.edges import route_after_matching
+from corpmind.graph.nodes import (
     BatchState,
     make_enrich_and_evaluate_node,
     make_evaluate_only_node,
@@ -64,7 +66,7 @@ from graph.nodes import (
     make_report_node,
     make_split_results_node,
 )
-from graph.tracing_config import GEMINI_RETRY_POLICY, GROQ_RETRY_POLICY, configure_tracing, max_concurrent_calls
+from corpmind.graph.tracing_config import GEMINI_RETRY_POLICY, GROQ_RETRY_POLICY, configure_tracing, max_concurrent_calls
 
 try:
     from langgraph.graph import END, START, StateGraph  # type: ignore
@@ -74,15 +76,15 @@ except ModuleNotFoundError:
     _HAS_LANGGRAPH = False
     START, END = "__start__", "__end__"
 
-    class StateGraph:  
+    class StateGraph:  # minimal local stand-in — sandbox only
         def __init__(self, state_type):
             self.state_type = state_type
             self.nodes: dict[str, tuple] = {}
             self.edges: list[tuple] = []
             self.conditional_edges: list[tuple] = []
 
-        def add_node(self, name, fn, retry=None):
-            self.nodes[name] = (fn, retry)
+        def add_node(self, name, fn, retry_policy=None):
+            self.nodes[name] = (fn, retry_policy)
             return self
 
         def add_edge(self, a, b):
@@ -136,10 +138,10 @@ def build_graph(
     report_kwargs = {"report_fn": report_fn} if report_fn else {}
 
     graph.add_node("ingestion", make_ingestion_node(**ingestion_kwargs))
-    graph.add_node("extract_and_phase_a", make_extract_and_phase_a_node(**extract_kwargs), retry=GROQ_RETRY_POLICY)  # see caveat #1
+    graph.add_node("extract_and_phase_a", make_extract_and_phase_a_node(**extract_kwargs), retry_policy=GROQ_RETRY_POLICY)  # see caveat #1
     graph.add_node("phase_b_matching", make_phase_b_node(**phase_b_kwargs))  # NO retry — Class 3a fail-fast deliberate
-    graph.add_node("enrich_and_evaluate", make_enrich_and_evaluate_node(**enrich_kwargs), retry=GEMINI_RETRY_POLICY)
-    graph.add_node("evaluate_only", make_evaluate_only_node(**evaluate_only_kwargs), retry=GEMINI_RETRY_POLICY)
+    graph.add_node("enrich_and_evaluate", make_enrich_and_evaluate_node(**enrich_kwargs), retry_policy=GEMINI_RETRY_POLICY)
+    graph.add_node("evaluate_only", make_evaluate_only_node(**evaluate_only_kwargs), retry_policy=GEMINI_RETRY_POLICY)
     graph.add_node("split_results", make_split_results_node())
     graph.add_node("report", make_report_node(**report_kwargs))
 
@@ -230,6 +232,14 @@ async def _main() -> None:
         }
     }
     final_state = await compiled.ainvoke(single_item_input)
+    print("DEBUG final_state type:", type(final_state), flush=True)
+    print("DEBUG final_state value:", final_state, flush=True)
+    assert final_state is not None, (
+        "compiled.ainvoke() returned None — this means langgraph's real API "
+        "differs from what build_graph() assumes somewhere (Send dispatch, "
+        "add_conditional_edges, or the state schema). Check `uv pip show "
+        "langgraph` and compare against the graph wiring in build_graph()."
+    )
     assert len(final_state.get("phase_a_out", [])) == 1
     assert len(final_state.get("matched_items", [])) == 1
     # single item, index 0 -> stub Phase B assigns NEW_PRODUCT (i % 3 != 2, i % 5 != 4)
