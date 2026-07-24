@@ -74,7 +74,7 @@ except ModuleNotFoundError:
     _HAS_LANGGRAPH = False
     START, END = "__start__", "__end__"
 
-    class StateGraph:  # minimal local stand-in — sandbox only
+    class StateGraph:  
         def __init__(self, state_type):
             self.state_type = state_type
             self.nodes: dict[str, tuple] = {}
