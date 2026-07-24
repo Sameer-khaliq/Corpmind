@@ -19,7 +19,7 @@ WIRING / VERIFICATION YOU MUST DO:
   3. `settings.max_concurrent_llm_calls` — add this to config.py if it
      doesn't exist yet; defaults to 10 here if missing. This is THE knob
      that trades latency against rate-limit risk — tune it against your
-     real Groq/Gemini/Tavily plan limits, not a guess.
+     real Groq/Gemini/Tavily plan limits.
 """
 
 from __future__ import annotations
