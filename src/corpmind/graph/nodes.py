@@ -40,9 +40,12 @@ Converting evaluate_item's internals to native async (AsyncGroq client) is
 the further optimization if 60-90s/100-items isn't met after this — that
 touches agents/evaluation.py, which stays alone until you ask for it.
 
-Concurrency itself is capped via a module-level asyncio.Semaphore sized from
-tracing_config.max_concurrent_calls() — uncapped Send fan-out just shifts
-time into Class-1 retry backoff instead of saving it.
+Concurrency itself is capped at the graph-invocation level, in Day 16's
+orchestration/batch_runner.py (via config={"max_concurrency": N} passed to
+compiled.ainvoke()/abatch()) — NOT inside this file. An earlier version of
+this module had its own internal asyncio.Semaphore; that's gone now that
+batch_runner.py owns it, so there's one place responsible for "how many
+calls are in flight," not two uncoordinated caps.
 
 WIRING YOU MUST DO before this runs for real:
   1. Every `_default_*_fn` below is a stub (with a small artificial
@@ -70,7 +73,6 @@ from graph.tracing_config import (
     attach_trace_metadata,
     classify_api_exception,
     make_trace_tags,
-    max_concurrent_calls,
     traceable,
 )
 
@@ -136,8 +138,13 @@ except ModuleNotFoundError:
         report: dict | None
 
 
-
-_SEMAPHORE = asyncio.Semaphore(max_concurrent_calls())
+# ---------------------------------------------------------------------------
+# Sync/async bridging (concurrency CAPPING itself lives in batch_runner.py,
+# via config={"max_concurrency": N} at the graph-invocation level — Day 16.
+# An earlier version of this file capped concurrency here too, with its own
+# asyncio.Semaphore; removed once batch_runner.py existed, so there's one
+# place that owns "how many calls are in flight," not two uncoordinated ones.
+# ---------------------------------------------------------------------------
 
 
 async def _call_maybe_async(fn: Callable, *args, **kwargs):
@@ -149,7 +156,9 @@ async def _call_maybe_async(fn: Callable, *args, **kwargs):
     return await asyncio.to_thread(fn, *args, **kwargs)
 
 
-
+# ---------------------------------------------------------------------------
+# Injectable hook types + stub defaults
+# ---------------------------------------------------------------------------
 
 IngestionFn = Callable[..., Any]
 ExtractionFn = Callable[..., Any]
@@ -277,7 +286,7 @@ def make_report_node(report_fn: ReportFn = _default_report_fn) -> Callable:
 
 
 # ---------------------------------------------------------------------------
-# Per-item nodes (Send-dispatched, async, semaphore-capped)
+# Per-item nodes (Send-dispatched, async — concurrency capped by batch_runner.py, not here)
 # ---------------------------------------------------------------------------
 
 
@@ -287,8 +296,12 @@ def make_extract_and_phase_a_node(
 ) -> Callable:
     """Send-fan-out #1 target. Extraction gets Class 2's inline schema-repair
     retry (cap 2). Phase A gets NO retry — a vector-store failure is Class
-    3a, fail fast. Both run under the shared semaphore so 100 concurrent
-    Sends don't all hit the API at once."""
+    3a, fail fast. Concurrency is capped at the graph-invocation level (Day
+    16's batch_runner.py, via config={"max_concurrency": N}) — NOT here.
+    An earlier version of this file had its own internal semaphore too;
+    that was removed deliberately once batch_runner.py existed, to avoid
+    two uncoordinated caps fighting each other and making the real
+    bottleneck impossible to reason about."""
 
     @traceable(name="extract_and_phase_a_node")
     async def _node(state: ItemState) -> dict:
@@ -297,32 +310,31 @@ def make_extract_and_phase_a_node(
 
         normalized: dict | None = None
         last_error: Exception | None = None
-        async with _SEMAPHORE:
-            for attempt in range(1, 3):  # cap 2, §1.4 Class 2
-                try:
-                    prompt_input = raw_row if last_error is None else {**raw_row, "_repair_note": str(last_error)}
-                    normalized = await _call_maybe_async(extraction_fn, prompt_input)
-                    attach_trace_metadata(model_used="llama-3.1-8b-instant", extraction_id=extraction_id, attempt=str(attempt))
-                    break
-                except ValidationError as ve:
-                    last_error = ve
-                    logger.warning("extraction schema-repair retry %s/2 for %s: %s", attempt, extraction_id, ve)
-                    continue
-                except Exception as e:
-                    raise classify_api_exception(e) from e
-
-            if normalized is None:
-                raise SchemaRepairExhaustedError(
-                    f"extraction failed schema validation twice for {extraction_id}: {last_error}"
-                )
-
+        for attempt in range(1, 3):  # cap 2, §1.4 Class 2
             try:
-                candidates = await _call_maybe_async(phase_a_fn, normalized)
+                prompt_input = raw_row if last_error is None else {**raw_row, "_repair_note": str(last_error)}
+                normalized = await _call_maybe_async(extraction_fn, prompt_input)
+                attach_trace_metadata(model_used="llama-3.1-8b-instant", extraction_id=extraction_id, attempt=str(attempt))
+                break
+            except ValidationError as ve:
+                last_error = ve
+                logger.warning("extraction schema-repair retry %s/2 for %s: %s", attempt, extraction_id, ve)
+                continue
             except Exception as e:
-                classified = classify_api_exception(e)
-                if not isinstance(classified, VectorStoreFatalError):
-                    classified = VectorStoreFatalError(str(e))
-                raise classified from e
+                raise classify_api_exception(e) from e
+
+        if normalized is None:
+            raise SchemaRepairExhaustedError(
+                f"extraction failed schema validation twice for {extraction_id}: {last_error}"
+            )
+
+        try:
+            candidates = await _call_maybe_async(phase_a_fn, normalized)
+        except Exception as e:
+            classified = classify_api_exception(e)
+            if not isinstance(classified, VectorStoreFatalError):
+                classified = VectorStoreFatalError(str(e))
+            raise classified from e
 
         item = dict(state)
         item.update(normalized_product=normalized, candidates=candidates)
@@ -341,7 +353,9 @@ def make_enrich_and_evaluate_node(
     """Send-fan-out #2 target for MATCHED_EXISTING ONLY (routing decision,
     locked in — NEW_PRODUCT and AMBIGUOUS go to evaluate_only_node instead).
     evaluate_item is synchronous (real Days 12-13 code) — bridged via
-    _call_maybe_async so it runs in a thread, not blocking the loop."""
+    _call_maybe_async so it runs in a thread, not blocking the loop.
+    Concurrency capped at the graph-invocation level (batch_runner.py), not
+    here — see extract_and_phase_a_node's docstring for why."""
 
     @traceable(name="enrich_and_evaluate_node")
     async def _node(state: ItemState) -> dict:
@@ -350,34 +364,33 @@ def make_enrich_and_evaluate_node(
         catalog_id = (state.get("match_result") or {}).get("catalog_id", state.get("catalog_id", ""))
         extraction_id = state.get("extraction_id", "unknown")
 
-        async with _SEMAPHORE:
-            try:
-                enrichment_raw = await _call_maybe_async(enrichment_fn, normalized, candidates)
-            except Exception as e:
-                raise classify_api_exception(e) from e
+        try:
+            enrichment_raw = await _call_maybe_async(enrichment_fn, normalized, candidates)
+        except Exception as e:
+            raise classify_api_exception(e) from e
 
-            enrichment_result = EnrichmentResult(
-                catalog_id=enrichment_raw.get("catalog_id", catalog_id),
-                field_results=[FieldEnrichment(**fr) for fr in enrichment_raw.get("field_results", [])],
-            )
-            match_result = MatchResult(**state["match_result"])
+        enrichment_result = EnrichmentResult(
+            catalog_id=enrichment_raw.get("catalog_id", catalog_id),
+            field_results=[FieldEnrichment(**fr) for fr in enrichment_raw.get("field_results", [])],
+        )
+        match_result = MatchResult(**state["match_result"])
 
-            kwargs = {}
-            if judge_call_fn is not None:
-                kwargs["judge_call_fn"] = judge_call_fn
-            if disambiguation_fn is not None:
-                kwargs["disambiguation_fn"] = disambiguation_fn
+        kwargs = {}
+        if judge_call_fn is not None:
+            kwargs["judge_call_fn"] = judge_call_fn
+        if disambiguation_fn is not None:
+            kwargs["disambiguation_fn"] = disambiguation_fn
 
-            record = await _call_maybe_async(
-                evaluate_item,
-                catalog_id=catalog_id,
-                match_result=match_result,
-                enrichment_result=enrichment_result,
-                low_cutoff=low_cutoff,
-                high_cutoff=high_cutoff,
-                **kwargs,
-            )
-            attach_trace_metadata(model_used="gemini-2.5-flash", extraction_id=extraction_id)
+        record = await _call_maybe_async(
+            evaluate_item,
+            catalog_id=catalog_id,
+            match_result=match_result,
+            enrichment_result=enrichment_result,
+            low_cutoff=low_cutoff,
+            high_cutoff=high_cutoff,
+            **kwargs,
+        )
+        attach_trace_metadata(model_used="gemini-2.5-flash", extraction_id=extraction_id)
 
         item = dict(state)
         item.update(enrichment_result=enrichment_raw, evaluation_record=record.model_dump())
@@ -408,17 +421,16 @@ def make_evaluate_only_node(
         if disambiguation_fn is not None:
             kwargs["disambiguation_fn"] = disambiguation_fn
 
-        async with _SEMAPHORE:
-            record = await _call_maybe_async(
-                evaluate_item,
-                catalog_id=catalog_id,
-                match_result=match_result,
-                enrichment_result=None,
-                low_cutoff=low_cutoff,
-                high_cutoff=high_cutoff,
-                **kwargs,
-            )
-            attach_trace_metadata(model_used="llama-3.3-70b-versatile", extraction_id=extraction_id)
+        record = await _call_maybe_async(
+            evaluate_item,
+            catalog_id=catalog_id,
+            match_result=match_result,
+            enrichment_result=None,
+            low_cutoff=low_cutoff,
+            high_cutoff=high_cutoff,
+            **kwargs,
+        )
+        attach_trace_metadata(model_used="llama-3.3-70b-versatile", extraction_id=extraction_id)
 
         item = dict(state)
         item.update(evaluation_record=record.model_dump())
