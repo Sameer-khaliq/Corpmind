@@ -221,7 +221,7 @@ class _ManualGraphRunner:
 async def _main() -> None:
     # configure_tracing()  # WIRING: uncomment once LANGCHAIN_API_KEY is set — skipped here to avoid failing loud in sandbox
 
-    compiled = build_graph().compile()
+    compiled = build_graph().compile(debug=True)  # DEBUG: temporary — shows internal step trace, remove once the None-return mystery is solved
 
     # === Day 14 checkpoint — single item flows end-to-end ===================
     single_item_input: BatchState = {  # type: ignore[typeddict-item]
