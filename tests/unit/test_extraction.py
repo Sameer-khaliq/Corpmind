@@ -47,17 +47,16 @@ def make_row(source_row_index: int, **raw_fields: object) -> RawProduct:
         raw_fields=raw_fields or {"title": f"Product {source_row_index}", "price": "9.99"},
     )
 
-
 import json
 
 def valid_response_json(rows):
     items = []
     for r in rows:
         items.append({
-            "item_id": f"item_{r['source_row_index']}",       # 🌟 Required field
-            "supplier_id": r.get("supplier_id", "supplier_a"),# 🌟 Required field
-            "source_row_index": r["source_row_index"],        # 🌟 Required field
-            "title": f"Product {r['source_row_index']}",
+            "item_id": f"item_{r.source_row_index}",       # 🌟 Fixed: Used dot notation
+            "supplier_id": getattr(r, "supplier_id", "supplier_a"),  # 🌟 Fixed
+            "source_row_index": r.source_row_index,        # 🌟 Fixed
+            "title": f"Product {r.source_row_index}",
             "category": "shirts",
             "field_confidences": {
                 "title": 0.9,
@@ -77,10 +76,10 @@ def response_missing_title(rows):
     items = []
     for r in rows:
         items.append({
-            "item_id": f"item_{r['source_row_index']}",
-            "supplier_id": r.get("supplier_id", "supplier_a"),
-            "source_row_index": r["source_row_index"],
-            "title": None, # Yeh test case deliberately title gayab karta hai reprompt trigger karne ke liye
+            "item_id": f"item_{r.source_row_index}",       # 🌟 Fixed
+            "supplier_id": getattr(r, "supplier_id", "supplier_a"),  # 🌟 Fixed
+            "source_row_index": r.source_row_index,        # 🌟 Fixed
+            "title": None,
             "category": "shirts",
             "field_confidences": {k: 0.0 for k in ["title", "brand", "category", "color", "material", "size", "price", "sku", "description"]}
         })
@@ -90,11 +89,11 @@ def response_bad_category(rows):
     items = []
     for r in rows:
         items.append({
-            "item_id": f"item_{r['source_row_index']}",
-            "supplier_id": r.get("supplier_id", "supplier_a"),
-            "source_row_index": r["source_row_index"],
-            "title": f"Product {r['source_row_index']}",
-            "category": "not-a-real-category", # Malformed taxonomy categorical input to trigger repair
+            "item_id": f"item_{r.source_row_index}",       # 🌟 Fixed
+            "supplier_id": getattr(r, "supplier_id", "supplier_a"),  # 🌟 Fixed
+            "source_row_index": r.source_row_index,        # 🌟 Fixed
+            "title": f"Product {r.source_row_index}",
+            "category": "not-a-real-category",
             "field_confidences": {
                 "title": 0.9, "category": 0.9, "brand": 0.0, "color": 0.0, 
                 "material": 0.0, "size": 0.0, "price": 0.0, "sku": 0.0, "description": 0.0
