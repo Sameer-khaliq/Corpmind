@@ -113,7 +113,8 @@ def resolve_batch(
     existing_ids_seen: set[str] = {p.candidate_id for p in all_candidate_pairs if p.candidate_is_existing}
     for p in all_candidate_pairs:
         if p.score > high_cutoff:
-            find(p.item_id); find(p.candidate_id)
+            find(p.item_id)
+            find(p.candidate_id)
             union(p.item_id, p.candidate_id)
 
     clusters: dict[str, list[str]] = defaultdict(list)
