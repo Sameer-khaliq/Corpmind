@@ -66,7 +66,7 @@ from corpmind.graph.nodes import (
     make_report_node,
     make_split_results_node,
 )
-from corpmind.graph.tracing_config import GEMINI_RETRY_POLICY, GROQ_RETRY_POLICY, configure_tracing, max_concurrent_calls
+from corpmind.graph.tracing_config import GEMINI_RETRY_POLICY, GROQ_RETRY_POLICY, max_concurrent_calls
 
 try:
     from langgraph.graph import END, START, StateGraph  # type: ignore
