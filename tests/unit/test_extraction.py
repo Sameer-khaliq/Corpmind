@@ -48,23 +48,27 @@ def make_row(source_row_index: int, **raw_fields: object) -> RawProduct:
     )
 import json
 
-
 def valid_response_json(rows):
     items = []
     for r in rows:
         items.append({
-            "item_id": f"item_{r.source_row_index}",       # Root parameter item_id mandatory fix
+            # 1. Flat identifiers jo root level par required hain
+            "item_id": f"item_{r.source_row_index}",
             "supplier_id": getattr(r, "supplier_id", "supplier_a"),
             "source_row_index": r.source_row_index,
-            "title": f"Product {r.source_row_index}",
-            "brand": None,
-            "category": "shirts",
-            "color": None,
-            "material": None,
-            "size": None,
-            "price": "9.99",
-            "sku": None,
-            "description": None,
+            
+            # 2. Strict Pydantic FieldExtraction objects (nested shape + values)
+            "title": {"value": f"Product {r.source_row_index}", "confidence": 0.9},
+            "brand": {"value": None, "confidence": 0.0},
+            "category": {"value": "shirts", "confidence": 0.9},
+            "color": {"value": None, "confidence": 0.0},
+            "material": {"value": None, "confidence": 0.0},
+            "size": {"value": None, "confidence": 0.0},
+            "price": {"value": "9.99", "confidence": 0.9},
+            "sku": {"value": None, "confidence": 0.0},
+            "description": {"value": None, "confidence": 0.0},
+            
+            # 3. Flat backstop field confidences array metrics
             "field_confidences": {
                 "title": 0.9,
                 "brand": 0.0,
@@ -86,15 +90,18 @@ def response_missing_title(rows):
             "item_id": f"item_{r.source_row_index}",
             "supplier_id": getattr(r, "supplier_id", "supplier_a"),
             "source_row_index": r.source_row_index,
-            "title": None,  # Deliberate trigger missing title check validation loop reprompt
-            "brand": None,
-            "category": "shirts",
-            "color": None,
-            "material": None,
-            "size": None,
-            "price": "9.99",
-            "sku": None,
-            "description": None,
+            
+            # Deliberately make the inner string value None to trigger the expected repair loop
+            "title": {"value": None, "confidence": 0.0},
+            "brand": {"value": None, "confidence": 0.0},
+            "category": {"value": "shirts", "confidence": 0.9},
+            "color": {"value": None, "confidence": 0.0},
+            "material": {"value": None, "confidence": 0.0},
+            "size": {"value": None, "confidence": 0.0},
+            "price": {"value": "9.99", "confidence": 0.9},
+            "sku": {"value": None, "confidence": 0.0},
+            "description": {"value": None, "confidence": 0.0},
+            
             "field_confidences": {k: 0.0 for k in ["title", "brand", "category", "color", "material", "size", "price", "sku", "description"]}
         })
     return json.dumps({"items": items})
@@ -106,15 +113,18 @@ def response_bad_category(rows):
             "item_id": f"item_{r.source_row_index}",
             "supplier_id": getattr(r, "supplier_id", "supplier_a"),
             "source_row_index": r.source_row_index,
-            "title": f"Product {r.source_row_index}",
-            "brand": None,
-            "category": "not-a-real-category",  # Taxonomy validation checker trigger loop
-            "color": None,
-            "material": None,
-            "size": None,
-            "price": "9.99",
-            "sku": None,
-            "description": None,
+            
+            "title": {"value": f"Product {r.source_row_index}", "confidence": 0.9},
+            "brand": {"value": None, "confidence": 0.0},
+            # Deliberately pass a bad category text to trigger the controlled taxonomy check
+            "category": {"value": "not-a-real-category", "confidence": 0.9},
+            "color": {"value": None, "confidence": 0.0},
+            "material": {"value": None, "confidence": 0.0},
+            "size": {"value": None, "confidence": 0.0},
+            "price": {"value": "9.99", "confidence": 0.9},
+            "sku": {"value": None, "confidence": 0.0},
+            "description": {"value": None, "confidence": 0.0},
+            
             "field_confidences": {
                 "title": 0.9, "category": 0.9, "brand": 0.0, "color": 0.0, 
                 "material": 0.0, "size": 0.0, "price": 0.9, "sku": 0.0, "description": 0.0

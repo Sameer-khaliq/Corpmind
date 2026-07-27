@@ -95,14 +95,15 @@ def _parse_response(
                 confidences[field] = fe.confidence
                 product_fields[field] = fe.value
 
+            
             validated[row.source_row_index] = NormalizedProduct(
+                item_id=item.get("item_id", f"item_{row.source_row_index}"), 
                 supplier_id=row.supplier_id,
                 source_row_index=row.source_row_index,
                 field_confidences=confidences,
                 **product_fields,
             )
         except ValidationError as e:
-            
             row_errors.append(f"source_row_index {row.source_row_index}: {e.errors()!r}")
 
     if row_errors:
