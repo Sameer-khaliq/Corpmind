@@ -111,7 +111,7 @@ ROUND_TRIP_CASES = [
     )),
     (MatchResult, dict(
         candidate_supplier_id="B", candidate_source_row_index=3,
-        rrf_score=0.82, decision=MatchDecision.MATCHED_EXISTING, matched_catalog_id="cat_001",
+        rrf_score=0.82, decision=MatchDecision.MATCHED_EXISTING, catalog_id="cat_001",
     )),
     (FieldEnrichment, dict(
         field_name="material", original_value=None, enriched_value="cotton",

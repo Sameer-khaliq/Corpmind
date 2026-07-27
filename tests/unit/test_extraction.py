@@ -48,56 +48,58 @@ def make_row(source_row_index: int, **raw_fields: object) -> RawProduct:
     )
 
 
-def valid_response_json(rows: list[RawProduct], category: str = VALID_CATEGORY) -> str:
-    """Well-formed LLM response: every row gets a valid title + taxonomy category."""
-    items = []
-    for row in rows:
-        item = {
-            "item_id": f"mock_prod_{row.source_row_index}",
-            "source_row_index": row.source_row_index
-        }
-        for field in ("title", "brand", "category", "color", "material",
-                      "size", "price", "sku", "description"):
-            item[field] = {"value": None, "confidence": 0.0}
-        item["title"] = {"value": row.raw_fields.get("title", "Unknown"), "confidence": 0.9}
-        item["category"] = {"value": category, "confidence": 0.9}
-        items.append(item)
-    return json.dumps({"items": items})
+import json
 
-
-def response_missing_title(rows: list[RawProduct]) -> str:
-    """Valid JSON shape, but title.value is null -> NormalizedProduct(title=None) fails
-    because title: str is required with no default. This is a real-world malformed
-    case distinct from broken JSON."""
+def valid_response_json(rows):
     items = []
-    for row in rows:
-        item = {
-            "item_id": "mock-id",
-            "source_row_index": row.source_row_index
+    for r in rows:
+        items.append({
+            "item_id": f"item_{r['source_row_index']}",       # 🌟 Required field
+            "supplier_id": r.get("supplier_id", "supplier_a"),# 🌟 Required field
+            "source_row_index": r["source_row_index"],        # 🌟 Required field
+            "title": f"Product {r['source_row_index']}",
+            "category": "shirts",
+            "field_confidences": {
+                "title": 0.9,
+                "brand": 0.0,
+                "category": 0.9,
+                "color": 0.0,
+                "material": 0.0,
+                "size": 0.0,
+                "price": 0.0,
+                "sku": 0.0,
+                "description": 0.0
             }
-        for field in ("title", "brand", "category", "color", "material",
-                      "size", "price", "sku", "description"):
-            item[field] = {"value": None, "confidence": 0.0}
-        item["category"] = {"value": VALID_CATEGORY, "confidence": 0.9}
-        # title deliberately left null
-        items.append(item)
+        })
     return json.dumps({"items": items})
 
-
-def response_bad_category(rows: list[RawProduct]) -> str:
-    """Valid JSON, but category isn't in the controlled taxonomy -> the
-    field_validator on NormalizedProduct raises, caught as ValidationError."""
+def response_missing_title(rows):
     items = []
-    for row in rows:
-        item = {
-            "item_id": "mock-id",
-            "source_row_index": row.source_row_index}
-        for field in ("title", "brand", "category", "color", "material",
-                      "size", "price", "sku", "description"):
-            item[field] = {"value": None, "confidence": 0.0}
-        item["title"] = {"value": row.raw_fields.get("title", "Unknown"), "confidence": 0.9}
-        item["category"] = {"value": "not-a-real-category", "confidence": 0.9}
-        items.append(item)
+    for r in rows:
+        items.append({
+            "item_id": f"item_{r['source_row_index']}",
+            "supplier_id": r.get("supplier_id", "supplier_a"),
+            "source_row_index": r["source_row_index"],
+            "title": None, # Yeh test case deliberately title gayab karta hai reprompt trigger karne ke liye
+            "category": "shirts",
+            "field_confidences": {k: 0.0 for k in ["title", "brand", "category", "color", "material", "size", "price", "sku", "description"]}
+        })
+    return json.dumps({"items": items})
+
+def response_bad_category(rows):
+    items = []
+    for r in rows:
+        items.append({
+            "item_id": f"item_{r['source_row_index']}",
+            "supplier_id": r.get("supplier_id", "supplier_a"),
+            "source_row_index": r["source_row_index"],
+            "title": f"Product {r['source_row_index']}",
+            "category": "not-a-real-category", # Malformed taxonomy categorical input to trigger repair
+            "field_confidences": {
+                "title": 0.9, "category": 0.9, "brand": 0.0, "color": 0.0, 
+                "material": 0.0, "size": 0.0, "price": 0.0, "sku": 0.0, "description": 0.0
+            }
+        })
     return json.dumps({"items": items})
 
 
