@@ -66,7 +66,7 @@ from typing import Annotated, Any, Callable, TypedDict
 
 from pydantic import ValidationError
 
-from graph.tracing_config import (
+from corpmind.graph.tracing_config import (
     SchemaRepairExhaustedError,
     TransientAPIError,
     VectorStoreFatalError,
@@ -78,9 +78,9 @@ from graph.tracing_config import (
 
 try:
     from corpmind.config import settings  # type: ignore
-    from corpmind.logging_config import get_logger  # type: ignore
+    import logging # type: ignore
 
-    logger = get_logger(__name__)
+    logger = logging.getLogger(__name__)
 except ModuleNotFoundError:
     import logging
 
@@ -241,16 +241,23 @@ def _default_disambiguation_fn(match_result) -> dict:
 def make_ingestion_node(ingestion_fn: IngestionFn = _default_ingestion_fn) -> Callable:
     @traceable(name="ingestion_node", tags=make_trace_tags("ingestion"))
     async def _ingestion_node(state: BatchState) -> dict:
+        print("DEBUG ingestion_node: ENTERED, state keys:", list(state.keys()) if hasattr(state, "keys") else type(state), flush=True)
         feed_descriptor = state.get("feed_descriptor", {})  # type: ignore[typeddict-item]
+        print("DEBUG ingestion_node: feed_descriptor =", feed_descriptor, flush=True)
         try:
             raw_rows = await _call_maybe_async(ingestion_fn, feed_descriptor)
         except Exception as e:
+            print("DEBUG ingestion_node: EXCEPTION during ingestion_fn call:", type(e).__name__, e, flush=True)
             raise classify_api_exception(e) from e
+        print("DEBUG ingestion_node: raw_rows =", raw_rows, flush=True)
         items: list[ItemState] = [
             {"raw_row": row, "extraction_id": row.get("extraction_id", f"row-{i}"), "source_row_index": i}
             for i, row in enumerate(raw_rows)
         ]
-        return {"raw_items": items}
+        print("DEBUG ingestion_node: about to return, items =", items, flush=True)
+        result = {"raw_items": items}
+        print("DEBUG ingestion_node: RETURNING:", result, "| type:", type(result), flush=True)
+        return result
 
     return _ingestion_node
 
@@ -345,7 +352,7 @@ def make_extract_and_phase_a_node(
 
 def make_enrich_and_evaluate_node(
     enrichment_fn: EnrichmentFn = _default_enrichment_fn,
-    judge_call_fn=None,  # if overridden: MUST STAY SYNC,as _default_disambiguation_fn above — evaluate_item calls it directly, not awaited
+    judge_call_fn=None,  # if overridden: MUST STAY SYNC, same reason as _default_disambiguation_fn above — evaluate_item calls it directly, not awaited
     disambiguation_fn=None,
     low_cutoff: float = 0.35,
     high_cutoff: float = 0.65,
