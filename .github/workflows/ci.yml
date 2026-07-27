@@ -33,9 +33,9 @@ jobs:
         run: uv run ruff check . --fix
 
       - name: Run tests
-        PYTHONPATH: "src"
-        run: uv run pytest -v
         env:
+          PYTHONPATH: src
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+        run: uv run pytest -v
