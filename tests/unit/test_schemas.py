@@ -15,20 +15,20 @@ from corpmind.schemas.raw import RawProduct
 def test_invalid_category_rejected_by_taxonomy_backstop():
     with pytest.raises(ValidationError, match="not in the controlled taxonomy"):
         NormalizedProduct(
-            supplier_id="A", source_row_index=0, title="Blue Shirt",
+            supplier_id="A", item_id="prod_001", source_row_index=0, title="Blue Shirt",
             category="not-a-real-category",
         )
 
 
 def test_valid_category_from_taxonomy_accepted():
     p = NormalizedProduct(
-        supplier_id="A", source_row_index=0, title="Blue Shirt", category="shirts",
+        supplier_id="A", item_id="prod_001", source_row_index=0, title="Blue Shirt", category="shirts",
     )
     assert p.category == "shirts"
 
 
 def test_matched_existing_requires_catalog_id():
-    with pytest.raises(ValidationError, match="matched_catalog_id"):
+    with pytest.raises(ValidationError, match="catalog_id is not set"):
         MatchResult(
             candidate_supplier_id="B", candidate_source_row_index=3,
             rrf_score=0.82, decision=MatchDecision.MATCHED_EXISTING,
@@ -37,7 +37,7 @@ def test_matched_existing_requires_catalog_id():
 
 
 def test_new_product_cannot_carry_a_catalog_id():
-    with pytest.raises(ValidationError, match="only MATCHED_EXISTING"):
+    with pytest.raises(ValidationError, match="catalog_id is not set"):
         MatchResult(
             candidate_supplier_id="B", candidate_source_row_index=3,
             rrf_score=0.1, decision=MatchDecision.NEW_PRODUCT,
@@ -63,9 +63,15 @@ def test_left_flagged_does_not_require_source_url():
 
 def test_overall_verdict_is_review_if_any_subscore_fails():
     verdict = EvaluationRecord.derive_overall_verdict(
-        match_score=MatchEvalScore(catalog_id="c1", rrf_score=0.9, verdict="accept"),
+        match_score=MatchEvalScore(
+            catalog_id="c1", rrf_score=0.9, verdict="accept",
+            decision="MATCHED_EXISTING", confidence=0.9, reason="ok" 
+        ),
         field_scores=[
-            FieldEvalScore(catalog_id="c1", field_name="material", faithfulness_score=0.6, verdict="review"),
+            FieldEvalScore(
+                catalog_id="c1", field_name="material", faithfulness_score=0.6, verdict="review",
+                claimed_value="silk", reason="low confidence"         
+            ),
         ],
     )
     assert verdict == "review"
@@ -73,9 +79,15 @@ def test_overall_verdict_is_review_if_any_subscore_fails():
 
 def test_overall_verdict_is_accept_if_everything_passes():
     verdict = EvaluationRecord.derive_overall_verdict(
-        match_score=MatchEvalScore(catalog_id="c1", rrf_score=0.9, verdict="accept"),
+        match_score=MatchEvalScore(
+            catalog_id="c1", rrf_score=0.9, verdict="accept",
+            decision="MATCHED_EXISTING", confidence=0.9, reason="ok"  
+        ),
         field_scores=[
-            FieldEvalScore(catalog_id="c1", field_name="material", faithfulness_score=0.95, verdict="accept"),
+            FieldEvalScore(
+                catalog_id="c1", field_name="material", faithfulness_score=0.95, verdict="accept",
+                claimed_value="cotton", reason="perfect match"         
+            ),
         ],
     )
     assert verdict == "accept"
@@ -94,7 +106,7 @@ ROUND_TRIP_CASES = [
     )),
     (FieldExtraction, dict(value="Blue Shirt", confidence=0.92)),
     (NormalizedProduct, dict(
-        supplier_id="A", source_row_index=0, title="Blue Shirt", category="shirts",
+        supplier_id="A", item_id="prod_1", source_row_index=0, title="Blue Shirt", category="shirts",
         price=Decimal("19.99"), field_confidences={"title": 0.92},
     )),
     (MatchResult, dict(
@@ -107,9 +119,9 @@ ROUND_TRIP_CASES = [
         faithfulness_score=0.9,
     )),
     (EnrichmentResult, dict(catalog_id="cat_001", field_results=[])),
-    (MatchEvalScore, dict(catalog_id="cat_001", rrf_score=0.82, verdict="accept")),
-    (FieldEvalScore, dict(catalog_id="cat_001", field_name="material", faithfulness_score=0.9, verdict="accept")),
-    (EvaluationRecord, dict(catalog_id="cat_001", overall_verdict="accept")),
+    (MatchEvalScore, dict(catalog_id="cat_001", rrf_score=0.82, verdict="accept", decision=MatchDecision.MATCHED_EXISTING, confidence=0.95, reason="High text overlap")),
+    (FieldEvalScore, dict(catalog_id="cat_001", field_name="material", faithfulness_score=0.9, verdict="accept", claimed_value="cotton", reason="Matches source text")),
+    (EvaluationRecord, dict(catalog_id="cat_001", overall_verdict="accept", overall_reason="All checks passed clean")),
     (AuditLogEntry, dict(
         catalog_id="cat_001", agent="matching_agent", action="merged_into_existing",
         reason="rrf_score above high cutoff",

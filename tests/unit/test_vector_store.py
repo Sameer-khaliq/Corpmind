@@ -30,7 +30,7 @@ FAKE_DOCS = [
 
 
 def _fake_embed(texts):
-    return [[1.0, 0.0] if "shirt" in t else [0.0, 1.0] for t in texts]
+    return [[1.0, 0.0, 0.0] if "shirt" in t else [0.0, 1.0, 0.0] for t in texts]
 
 
 @patch("corpmind.retrieval.vector_store._embed_texts", side_effect=_fake_embed)

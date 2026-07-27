@@ -52,7 +52,10 @@ def valid_response_json(rows: list[RawProduct], category: str = VALID_CATEGORY) 
     """Well-formed LLM response: every row gets a valid title + taxonomy category."""
     items = []
     for row in rows:
-        item = {"source_row_index": row.source_row_index}
+        item = {
+            "item_id": f"mock_prod_{row.source_row_index}",
+            "source_row_index": row.source_row_index
+        }
         for field in ("title", "brand", "category", "color", "material",
                       "size", "price", "sku", "description"):
             item[field] = {"value": None, "confidence": 0.0}
@@ -68,7 +71,10 @@ def response_missing_title(rows: list[RawProduct]) -> str:
     case distinct from broken JSON."""
     items = []
     for row in rows:
-        item = {"source_row_index": row.source_row_index}
+        item = {
+            "item_id": "mock-id",
+            "source_row_index": row.source_row_index
+            }
         for field in ("title", "brand", "category", "color", "material",
                       "size", "price", "sku", "description"):
             item[field] = {"value": None, "confidence": 0.0}
@@ -83,7 +89,9 @@ def response_bad_category(rows: list[RawProduct]) -> str:
     field_validator on NormalizedProduct raises, caught as ValidationError."""
     items = []
     for row in rows:
-        item = {"source_row_index": row.source_row_index}
+        item = {
+            "item_id": "mock-id",
+            "source_row_index": row.source_row_index}
         for field in ("title", "brand", "category", "color", "material",
                       "size", "price", "sku", "description"):
             item[field] = {"value": None, "confidence": 0.0}
