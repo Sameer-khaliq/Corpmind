@@ -68,7 +68,6 @@ from pydantic import ValidationError
 
 from corpmind.graph.tracing_config import (
     SchemaRepairExhaustedError,
-    TransientAPIError,
     VectorStoreFatalError,
     attach_trace_metadata,
     classify_api_exception,
@@ -103,11 +102,8 @@ try:
     )
 except ModuleNotFoundError:
     from evaluation_agent import (  # type: ignore  (sandbox fallback filename)
-        EnrichmentResolution,
         EnrichmentResult,
-        EnrichmentSource,
         FieldEnrichment,
-        MatchDecision,
         MatchResult,
         evaluate_item,
     )
