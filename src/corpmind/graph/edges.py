@@ -1,23 +1,17 @@
 """
 graph/edges.py
 
-CorpMind — Conditional edges (Day 14)
-========================================
+CorpMind — Conditional edges (Day 14), rebuilt against the real state schema
+===============================================================================
 
-route_after_matching: the ONLY conditional edge named in the Day 14 spec.
-Deterministic Python conditional on match_result.decision — no LLM
-supervisor.
+Only one Send stage exists now (see nodes.py's module docstring for why) —
+this is the only conditional edge in the graph, dispatched right after
+extract_and_match_node writes `items` (the real BatchState accumulator key,
+confirmed from your schemas/state.py upload).
 
-ROUTING DECISION, LOCKED IN (this replaced an earlier AMBIGUOUS-only-skip
-version — if you have an older copy of this file lying around, delete it,
-this is the one that matches the actual decision):
-  - MATCHED_EXISTING -> enrich_and_evaluate  (only decision that gets Enrichment)
-  - NEW_PRODUCT       -> evaluate_only        (evaluates extraction only)
-  - AMBIGUOUS         -> evaluate_only        (runs Day 13's LLM disambiguation)
-Deliberately keeps NEW_PRODUCT and AMBIGUOUS out of Enrichment — no existing
-catalog entry to ground new-product enrichment against, and routing
-AMBIGUOUS through Enrichment would build the complex cycle this decision
-exists to avoid.
+ROUTING DECISION (unchanged from before, still locked in):
+  - MATCHED_EXISTING -> enrich_and_evaluate
+  - NEW_PRODUCT / AMBIGUOUS -> evaluate_only
 """
 
 from __future__ import annotations
@@ -28,7 +22,7 @@ try:
     from langgraph.types import Send  # type: ignore
 except ModuleNotFoundError:
 
-    class Send:  # local stand-in — sandbox only
+    class Send:  # sandbox-only stand-in
         def __init__(self, node: str, arg: Any):
             self.node = node
             self.arg = arg
@@ -38,25 +32,21 @@ except ModuleNotFoundError:
 
 try:
     from corpmind.schemas.state import BatchState  # type: ignore
+    from corpmind.schemas.matching import MatchDecision  # type: ignore
 except ModuleNotFoundError:
-    from graph.nodes import BatchState  # type: ignore
+    from graph.nodes import BatchState, MatchDecision  # type: ignore
 
 
 def route_after_matching(state: BatchState) -> list[Send]:
     """
-    Fan out each item in matched_items (written once, sequentially, by
-    phase_b_matching_node) based on its Phase B decision:
-      - MATCHED_EXISTING -> enrich_and_evaluate
-      - NEW_PRODUCT / AMBIGUOUS -> evaluate_only
-
-    Both target nodes converge into the same `eval_out` accumulator key, so
-    the join after this fan out is implicit regardless of which branch each
-    item took.
+    Fan out each item in `items` (written once by extract_and_match_node)
+    based on its match_result.decision.
     """
     sends: list[Send] = []
-    for item in state.get("matched_items", []):
-        decision = (item.get("match_result") or {}).get("decision")
-        if decision == "MATCHED_EXISTING":
+    for item in state.get("items", []):
+        match_result = item.get("match_result")
+        decision = getattr(match_result, "decision", None) if match_result is not None else None
+        if decision == MatchDecision.MATCHED_EXISTING or decision == "MATCHED_EXISTING":
             sends.append(Send("enrich_and_evaluate", item))
         else:  # NEW_PRODUCT or AMBIGUOUS
             sends.append(Send("evaluate_only", item))
@@ -64,15 +54,18 @@ def route_after_matching(state: BatchState) -> list[Send]:
 
 
 if __name__ == "__main__":
+    class _M:
+        def __init__(self, d):
+            self.decision = d
+
     fake_state: BatchState = {  # type: ignore[typeddict-item]
-        "matched_items": [
-            {"catalog_id": "cat-1", "match_result": {"decision": "NEW_PRODUCT"}},
-            {"catalog_id": "cat-2", "match_result": {"decision": "MATCHED_EXISTING"}},
-            {"catalog_id": None, "match_result": {"decision": "AMBIGUOUS", "catalog_id": None}},
+        "items": [
+            {"match_result": _M(MatchDecision.NEW_PRODUCT)},
+            {"match_result": _M(MatchDecision.MATCHED_EXISTING)},
+            {"match_result": _M(MatchDecision.AMBIGUOUS)},
         ]
     }
     routed = route_after_matching(fake_state)
     targets = [s.node for s in routed]
     assert targets == ["evaluate_only", "enrich_and_evaluate", "evaluate_only"], targets
     print("[edges] PASS — route_after_matching dispatches correctly:", targets)
-    print("  (MATCHED_EXISTING -> enrich_and_evaluate; NEW_PRODUCT/AMBIGUOUS -> evaluate_only)")

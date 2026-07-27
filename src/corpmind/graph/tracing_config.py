@@ -131,14 +131,9 @@ def traceable(*d_args, **d_kwargs):
         if inspect.iscoroutinefunction(fn):
             @functools.wraps(fn)
             async def async_wrapper(*args, **kwargs):
-                tracing_on = os.environ.get("LANGCHAIN_TRACING_V2") == "true"
-                print(f"DEBUG traceable[{fn.__name__}]: tracing_on={tracing_on}, _HAS_LANGSMITH={_HAS_LANGSMITH}", flush=True)
-                if tracing_on:
-                    result = await traced_fn(*args, **kwargs)
-                else:
-                    result = await fn(*args, **kwargs)
-                print(f"DEBUG traceable[{fn.__name__}]: about to return, result type={type(result)}", flush=True)
-                return result
+                if os.environ.get("LANGCHAIN_TRACING_V2") == "true":
+                    return await traced_fn(*args, **kwargs)
+                return await fn(*args, **kwargs)
 
             return async_wrapper
 
