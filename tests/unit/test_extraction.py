@@ -46,7 +46,6 @@ def make_row(source_row_index: int, **raw_fields: object) -> RawProduct:
         source_file="feed_a.csv",
         raw_fields=raw_fields or {"title": f"Product {source_row_index}", "price": "9.99"},
     )
-
 import json
 
 def valid_response_json(rows):
@@ -56,9 +55,16 @@ def valid_response_json(rows):
             "item_id": f"item_{r.source_row_index}",
             "supplier_id": getattr(r, "supplier_id", "supplier_a"),
             "source_row_index": r.source_row_index,
-            "title": f"Product {r.source_row_index}",
-            "category": "shirts",
-            # 🔥 THE CRUCIAL FIX: Group values correctly inside expected Pydantic fields format if needed
+            # 🔥 Nested FieldExtraction schema structures injection:
+            "title": {"value": f"Product {r.source_row_index}", "confidence": 0.9},
+            "brand": {"value": None, "confidence": 0.0},
+            "category": {"value": "shirts", "confidence": 0.9},
+            "color": {"value": None, "confidence": 0.0},
+            "material": {"value": None, "confidence": 0.0},
+            "size": {"value": None, "confidence": 0.0},
+            "price": {"value": "9.99", "confidence": 0.9},
+            "sku": {"value": None, "confidence": 0.0},
+            "description": {"value": None, "confidence": 0.0},
             "field_confidences": {
                 "title": 0.9,
                 "brand": 0.0,
@@ -66,7 +72,7 @@ def valid_response_json(rows):
                 "color": 0.0,
                 "material": 0.0,
                 "size": 0.0,
-                "price": 0.0,
+                "price": 0.9,
                 "sku": 0.0,
                 "description": 0.0
             }
@@ -80,8 +86,16 @@ def response_missing_title(rows):
             "item_id": f"item_{r.source_row_index}",
             "supplier_id": getattr(r, "supplier_id", "supplier_a"),
             "source_row_index": r.source_row_index,
-            "title": "",  # Use an empty string instead of None to avoid string model_type error triggers
-            "category": "shirts",
+            # Deliberately make title value None to trigger the expected text reprompt loop
+            "title": {"value": None, "confidence": 0.0},
+            "brand": {"value": None, "confidence": 0.0},
+            "category": {"value": "shirts", "confidence": 0.9},
+            "color": {"value": None, "confidence": 0.0},
+            "material": {"value": None, "confidence": 0.0},
+            "size": {"value": None, "confidence": 0.0},
+            "price": {"value": "9.99", "confidence": 0.9},
+            "sku": {"value": None, "confidence": 0.0},
+            "description": {"value": None, "confidence": 0.0},
             "field_confidences": {k: 0.0 for k in ["title", "brand", "category", "color", "material", "size", "price", "sku", "description"]}
         })
     return json.dumps({"items": items})
@@ -93,11 +107,19 @@ def response_bad_category(rows):
             "item_id": f"item_{r.source_row_index}",
             "supplier_id": getattr(r, "supplier_id", "supplier_a"),
             "source_row_index": r.source_row_index,
-            "title": f"Product {r.source_row_index}",
-            "category": "not-a-real-category",
+            "title": {"value": f"Product {r.source_row_index}", "confidence": 0.9},
+            "brand": {"value": None, "confidence": 0.0},
+            # Deliberately put bad category value to test taxonomy backstop checks
+            "category": {"value": "not-a-real-category", "confidence": 0.9},
+            "color": {"value": None, "confidence": 0.0},
+            "material": {"value": None, "confidence": 0.0},
+            "size": {"value": None, "confidence": 0.0},
+            "price": {"value": "9.99", "confidence": 0.9},
+            "sku": {"value": None, "confidence": 0.0},
+            "description": {"value": None, "confidence": 0.0},
             "field_confidences": {
                 "title": 0.9, "category": 0.9, "brand": 0.0, "color": 0.0, 
-                "material": 0.0, "size": 0.0, "price": 0.0, "sku": 0.0, "description": 0.0
+                "material": 0.0, "size": 0.0, "price": 0.9, "sku": 0.0, "description": 0.0
             }
         })
     return json.dumps({"items": items})
