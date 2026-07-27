@@ -79,8 +79,6 @@ try:
         ModelLimits,
         _reset_registry_for_testing,
         assert_rate_not_exceeded,
-        get_model_limiter,
-        load_rate_limits,
         rate_limited,
     )
 except ModuleNotFoundError:
