@@ -25,12 +25,13 @@ WIRING / VERIFICATION YOU MUST DO:
 
 from __future__ import annotations
 
+import functools
 import os
 from dataclasses import dataclass
 
 try:
     from corpmind.config import settings  # type: ignore
-    import logging  # type: ignore
+    import logging # type: ignore
 
     logger = logging.getLogger(__name__)
 except ModuleNotFoundError:
@@ -78,14 +79,14 @@ except ModuleNotFoundError:
 # ---------------------------------------------------------------------------
 
 try:
-    from langsmith import traceable  # type: ignore
+    from langsmith import traceable as _real_traceable  # type: ignore
     from langsmith.run_helpers import get_current_run_tree  # type: ignore
 
     _HAS_LANGSMITH = True
 except ModuleNotFoundError:
     _HAS_LANGSMITH = False
 
-    def traceable(*d_args, **d_kwargs):  # type: ignore
+    def _real_traceable(*d_args, **d_kwargs):  # type: ignore
         def decorator(fn):
             return fn
 
@@ -95,6 +96,64 @@ except ModuleNotFoundError:
 
     def get_current_run_tree():  # type: ignore
         return None
+
+
+def traceable(*d_args, **d_kwargs):
+    """
+    Guarded wrapper around langsmith's real @traceable. Only actually
+    invokes the real decorator's wrapped call when tracing is explicitly
+    enabled (LANGCHAIN_TRACING_V2=true, set by configure_tracing()) —
+    otherwise calls the original function directly, bypassing langsmith
+    entirely.
+
+    WHY THIS EXISTS, CONCRETELY: with real langsmith installed but tracing
+    never configured (no LANGCHAIN_API_KEY / configure_tracing() not
+    called), the real @traceable decorator was observed silently returning
+    None from an async node instead of the node's actual return value
+    (confirmed via langgraph's compile(debug=True) step trace showing
+    {'ingestion': None} for a node whose own body unconditionally returns a
+    dict). Root-caused to the langsmith wrapper's interaction with an
+    unconfigured/no-op tracing backend — not to graph wiring, Send
+    dispatch, or state schema, all of which were verified correct in
+    isolation first. This guard makes tracing a true opt-in: absent or
+    off, every node behaves exactly as if @traceable were never applied.
+    Re-verify this doesn't mask a DIFFERENT problem once
+    LANGCHAIN_API_KEY/configure_tracing() are actually wired for real — at
+    that point tracing turns on and starts exercising the real decorator
+    path again, which hasn't been proven safe under real production
+    tracing yet, only proven NOT silently broken when tracing is off.
+    """
+    import inspect
+
+    def decorator(fn):
+        traced_fn = _real_traceable(*d_args, **d_kwargs)(fn) if _HAS_LANGSMITH else fn
+
+        if inspect.iscoroutinefunction(fn):
+            @functools.wraps(fn)
+            async def async_wrapper(*args, **kwargs):
+                tracing_on = os.environ.get("LANGCHAIN_TRACING_V2") == "true"
+                print(f"DEBUG traceable[{fn.__name__}]: tracing_on={tracing_on}, _HAS_LANGSMITH={_HAS_LANGSMITH}", flush=True)
+                if tracing_on:
+                    result = await traced_fn(*args, **kwargs)
+                else:
+                    result = await fn(*args, **kwargs)
+                print(f"DEBUG traceable[{fn.__name__}]: about to return, result type={type(result)}", flush=True)
+                return result
+
+            return async_wrapper
+
+        @functools.wraps(fn)
+        def sync_wrapper(*args, **kwargs):
+            if os.environ.get("LANGCHAIN_TRACING_V2") == "true":
+                return traced_fn(*args, **kwargs)
+            return fn(*args, **kwargs)
+
+        return sync_wrapper
+
+    if d_args and callable(d_args[0]) and not d_kwargs:
+        # used as bare @traceable (no call/parens)
+        return decorator(d_args[0])
+    return decorator
 
 
 def configure_tracing() -> None:
