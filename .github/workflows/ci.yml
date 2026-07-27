@@ -33,6 +33,7 @@ jobs:
         run: uv run ruff check . --fix
 
       - name: Run tests
+        PYTHONPATH: src
         run: uv run pytest -v
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
