@@ -7,7 +7,7 @@ OUT_PATH = Path("data/sample_feeds/day17_amazon_50.csv")
 
 def main():
     df = pd.read_csv(RAW_FILE)
-    sample = df.sample(n=50, random_state=42)
+    sample = df.sample(n=53, random_state=42)
     sample["supplier_id"] = "supplier_a"  # single supplier for this run
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
