@@ -131,7 +131,7 @@ class _ManualGraphRunner:
 
         state = dict(initial_state)
         
-        # 🛠️ State Extraction Fix: Fallback inject to guarantee that state tracking doesn't drop
+        # State Extraction Fix: Fallback inject to guarantee that state tracking doesn't drop
         node_updates = await run("extract_and_match", state)
         state.update(node_updates)
         state = dict(initial_state)
