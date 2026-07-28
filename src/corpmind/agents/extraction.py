@@ -55,13 +55,27 @@ def _build_user_prompt(rows: list[RawProduct]) -> str:
     ]
     return json.dumps({"rows": payload}, ensure_ascii=False)
 
-def _call_llm(client: Any, messages: list[dict]) -> str:
+def _call_llm(client: Any, messages: list[dict], batch_size: int = 1) -> str:
+    start_time = time.monotonic()
+
     response = client.chat.completions.create(
         model=settings.extraction_model,
         messages=messages,
         temperature=0,
         response_format={"type": "json_object"},
     )
+
+    latency_s = time.monotonic() - start_time
+
+    if hasattr(response, "usage") and response.usage:
+        tracker.record(
+            stage="extraction",
+            prompt_tokens=response.usage.prompt_tokens,
+            completion_tokens=response.usage.completion_tokens,
+            latency_s=latency_s,
+            batch_size=batch_size,   
+        )
+
     return response.choices[0].message.content
 
 
