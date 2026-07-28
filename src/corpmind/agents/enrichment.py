@@ -127,8 +127,10 @@ def fields_needing_enrichment(
     return targets
 
 
+import time
+from corpmind.observability.token_tracker import tracker
+
 def enrich_field(product: NormalizedProduct, field_name: str) -> FieldEnrichment:
-    """Run the capped ReAct loop for one (product, missing_field) pair."""
     original_value = getattr(product, field_name, None)
 
     llm = ChatGroq(model=settings.extraction_model, api_key=settings.GROQ_API_KEY, temperature=0)
@@ -149,7 +151,21 @@ def enrich_field(product: NormalizedProduct, field_name: str) -> FieldEnrichment
                     "ONLY the final JSON object -- no tool calls."
                 )
             )
+
+        start_time = time.monotonic()
         response = (llm if force_final else llm_with_tools).invoke(messages)
+        latency_s = time.monotonic() - start_time
+
+        usage = getattr(response, "usage_metadata", None)
+        if usage:
+            tracker.record(
+                stage="enrichment",
+                prompt_tokens=usage.get("input_tokens", 0),
+                completion_tokens=usage.get("output_tokens", 0),
+                latency_s=latency_s,
+                batch_size=1,
+            )
+
         messages.append(response)
 
         tool_calls = getattr(response, "tool_calls", None)
@@ -182,7 +198,6 @@ def enrich_field(product: NormalizedProduct, field_name: str) -> FieldEnrichment
             messages.append(
                 ToolMessage(content=_untrusted_envelope(raw_results), tool_call_id=call["id"])
             )
-
 
 def enrich_product(product: NormalizedProduct) -> EnrichmentResult:
     catalog_id = f"{product.supplier_id}:{product.source_row_index}"
