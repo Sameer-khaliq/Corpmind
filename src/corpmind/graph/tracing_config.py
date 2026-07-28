@@ -30,8 +30,8 @@ import os
 from dataclasses import dataclass
 
 try:
-    from corpmind.config import settings  # type: ignore
-    import logging # type: ignore
+    from corpmind.config import settings  
+    import logging 
 
     logger = logging.getLogger(__name__)
 except ModuleNotFoundError:
@@ -63,7 +63,7 @@ try:
     _HAS_LANGGRAPH = True
 except ModuleNotFoundError:
     _HAS_LANGGRAPH = False
-
+#defensive wrapper (protective layer)
     @dataclass
     class RetryPolicy:  # local mirror — real machine hits the try-branch
         max_attempts: int = 3
@@ -85,7 +85,7 @@ try:
     _HAS_LANGSMITH = True
 except ModuleNotFoundError:
     _HAS_LANGSMITH = False
-
+#defensive wrapper (protective layer)
     def _real_traceable(*d_args, **d_kwargs):  # type: ignore
         def decorator(fn):
             return fn
@@ -97,7 +97,7 @@ except ModuleNotFoundError:
     def get_current_run_tree():  # type: ignore
         return None
 
-
+#defensive wrapper (protective layer)
 def traceable(*d_args, **d_kwargs):
     """
     Guarded wrapper around langsmith's real @traceable. Only actually
@@ -180,8 +180,7 @@ def make_trace_tags(node_name: str, *extra: str) -> list[str]:
 
 # ---------------------------------------------------------------------------
 # §1.4 error taxonomy — unchanged by the async conversion
-# ---------------------------------------------------------------------------
-
+# Graceful Degradation 
 
 class TransientAPIError(Exception):
     """Class 1 — network/5xx/timeout/429. Retryable, backoff+jitter, cap 3."""
