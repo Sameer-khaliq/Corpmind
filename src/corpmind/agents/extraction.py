@@ -54,6 +54,8 @@ def _build_user_prompt(rows: list[RawProduct]) -> str:
         for r in rows
     ]
     return json.dumps({"rows": payload}, ensure_ascii=False)
+import time
+from corpmind.observability.token_tracker import tracker
 
 def _call_llm(client: Any, messages: list[dict], batch_size: int = 1) -> str:
     start_time = time.monotonic()
