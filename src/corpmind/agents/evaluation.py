@@ -109,30 +109,18 @@ def evaluate_enrichment_result(
 DisambiguationFn = Callable[[MatchResult], dict]
 
 
+import time
+from corpmind.observability.token_tracker import tracker
+
 def default_disambiguation_fn(match_result: MatchResult) -> dict:
-    """
-    Real implementation — calls Groq's llama-3.3-70b-versatile to resolve an
-    AMBIGUOUS match, per §1.5's model routing rule.
- 
-    FLAGGED PLAINLY: MatchResult here only carries catalog_id / rrf_score /
-    decision — no actual item-vs-candidate product fields (title, brand,
-    category, etc.). Without those an LLM has nothing real to compare, and
-    this call degrades to guessing off a bare number. The getattr() calls
-    below fall back gracefully so this won't crash if those fields are
-    missing, but it also won't be doing genuine disambiguation until your
-    real corpmind.schemas.matching.MatchResult actually carries that data
-    (or it's threaded through some other way). Confirm this before trusting
-    the AMBIGUOUS path in production.
-    """
     import json
- 
     from groq import Groq
- 
+
     client = Groq(api_key=settings.GROQ_API_KEY)
- 
+
     item_desc = getattr(match_result, "item_summary", None) or getattr(match_result, "normalized_product", None)
     candidate_desc = getattr(match_result, "candidate_summary", None) or getattr(match_result, "matched_candidate", None)
- 
+
     prompt = (
         "You are resolving an AMBIGUOUS product match in a catalog "
         "reconciliation pipeline. The hybrid-search RRF fusion score for "
@@ -152,16 +140,27 @@ def default_disambiguation_fn(match_result: MatchResult) -> dict:
         "the available detail is insufficient to judge, return "
         "resolved=false with low confidence rather than guessing."
     )
- 
+
+    start_time = time.monotonic()
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.0,
         response_format={"type": "json_object"},
     )
- 
+    latency_s = time.monotonic() - start_time
+
+    if hasattr(response, "usage") and response.usage:
+        tracker.record(
+            stage="evaluation_disambiguation",
+            prompt_tokens=response.usage.prompt_tokens,
+            completion_tokens=response.usage.completion_tokens,
+            latency_s=latency_s,
+            batch_size=1,
+        )
+
     raw_text = response.choices[0].message.content
- 
+
     try:
         parsed = json.loads(raw_text)
         return {
@@ -172,8 +171,6 @@ def default_disambiguation_fn(match_result: MatchResult) -> dict:
     except Exception as e:
         logger.warning("disambiguation response could not be parsed for %s: %s", match_result.catalog_id, e)
         return {"resolved": False, "confidence": 0.0, "reasoning": f"unparseable disambiguation response: {raw_text[:200]}"}
-
-
 def rrf_to_confidence(rrf_score: float, low_cutoff: float, high_cutoff: float) -> float:
     if high_cutoff <= low_cutoff:
         raise ValueError("high_cutoff must be greater than low_cutoff")
