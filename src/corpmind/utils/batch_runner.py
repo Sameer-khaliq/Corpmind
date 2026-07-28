@@ -57,13 +57,13 @@ from __future__ import annotations
 import asyncio
 import time
 
-from graph.build_graph import build_graph
+from corpmind.graph.build_graph import build_graph
 
 try:
     from corpmind.config import settings  # type: ignore
-    from corpmind.logging_config import get_logger  # type: ignore
+    import logging  # type: ignore
 
-    logger = get_logger(__name__)
+    logger = logging.getLogger(__name__)
 except ModuleNotFoundError:
     import logging
 

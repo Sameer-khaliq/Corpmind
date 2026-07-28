@@ -163,7 +163,7 @@ try:
         evaluate_item,
     )
 except ModuleNotFoundError:
-    from evaluation_agent import (  # type: ignore  (sandbox fallback filename)
+    from corpmind.agents.evaluation import (  # type: ignore  (sandbox fallback filename)
         EnrichmentResult,
         FieldEnrichment,
         evaluate_item,
@@ -400,6 +400,40 @@ def make_evaluate_only_node(
     @traceable(name="evaluate_only_node")
     async def _node(state: ItemState) -> dict:
         match_result: MatchResult = state["match_result"]
+
+        if match_result is None:
+            from corpmind.schemas.evaluation import EvaluationRecord
+            from corpmind.schemas.audit import AuditLogEntry
+            import time
+
+            fail_record = EvaluationRecord(
+                catalog_id="unknown_structural_bypass",
+                match_evaluation=None,
+                field_evaluations={},
+                overall_verdict="review",
+                overall_reason="Pipeline structural failure: item reached evaluate_only_node without a valid match_result state."
+            )
+            
+            # Construct Audit Log Entry
+            err_audit = AuditLogEntry(
+                timestamp=time.time(),
+                stage="evaluation",
+                status="ERROR",
+                message="Missing match_result context before reaching evaluation node.",
+                metadata={}
+            )
+            
+            # Append safely to state metrics tracking
+            current_audit_entries = list(state.get("audit_entries", [])) or []
+            current_audit_entries.append(err_audit)
+
+            item: ItemState = {
+                **state, 
+                "evaluation_record": fail_record,
+                "audit_entries": current_audit_entries
+            }
+            return {"flagged_items": [item]}
+
         catalog_id = match_result.catalog_id
 
         kwargs = {}
