@@ -3,7 +3,7 @@ from typing import Callable
 from pydantic import BaseModel, Field, model_validator
 import logging
 # Strict internal package imports
-from src.corpmind.eval.ragas_harness import (  
+from corpmind.eval.ragas_harness import (  
     FaithfulnessJudgeFn,
     FieldEvalScore,  
     FieldFaithfulnessInput,
@@ -11,14 +11,14 @@ from src.corpmind.eval.ragas_harness import (
     default_judge_call_fn,
     evaluate_field_faithfulness_batch,
 )
-from src.corpmind.config import settings  
-from src.corpmind.schemas.enrichment import (  
+from corpmind.config import settings  
+from corpmind.schemas.enrichment import (  
     EnrichmentResolution,
     EnrichmentResult,
     EnrichmentSource,
     FieldEnrichment,
 )
-from src.corpmind.schemas.matching import MatchDecision, MatchResult
+from corpmind.schemas.matching import MatchDecision, MatchResult
 
 logger = logging.getLogger(__name__)
 _REAL_IMPORTS = True
