@@ -48,7 +48,7 @@ def route_after_matching(state: BatchState) -> list[Send]:
         decision = getattr(match_result, "decision", None) if match_result is not None else None
         if decision == MatchDecision.MATCHED_EXISTING or decision == "MATCHED_EXISTING":
             sends.append(Send("enrich_and_evaluate", item))
-        else:  # NEW_PRODUCT or AMBIGUOUS
+        else:  
             sends.append(Send("evaluate_only", item))
     return sends
 
