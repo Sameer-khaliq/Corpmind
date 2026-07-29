@@ -117,14 +117,23 @@ def temp_consistency_fn(item: dict):
         attributes=attributes,
     )
 @rate_limited("judge_model", estimate_tokens=lambda batch: len(batch) * 300.0)
-async def rate_limited_judge_call_fn(batch):
-    return await asyncio.to_thread(default_judge_call_fn, batch)
+async def _async_judge_call(batch):
+    return default_judge_call_fn(batch)
+
+def rate_limited_judge_call_fn(batch):
+    # evaluate_item calls this SYNCHRONOUSLY (it already runs inside
+    # asyncio.to_thread from nodes.py) — bridge to the async rate
+    # limiter via asyncio.run(), same pattern as Day 14-15's
+    # judge/disambiguation sync-bridge note.
+    return asyncio.run(_async_judge_call(batch))
 
 
 @rate_limited("escalation_model", estimate_tokens=400.0)
-async def rate_limited_disambiguation_fn(match_result):
-    return await asyncio.to_thread(default_disambiguation_fn, match_result)
+async def _async_disambiguation_call(match_result):
+    return default_disambiguation_fn(match_result)
 
+def rate_limited_disambiguation_fn(match_result):
+    return asyncio.run(_async_disambiguation_call(match_result))
 def build_real_graph(client):
     adapters = GraphAdapters(client)
     graph = build_graph(
