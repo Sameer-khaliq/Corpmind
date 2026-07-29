@@ -11,7 +11,7 @@ from corpmind.config import settings
 from corpmind.agents.ingestion import ingest_supplier_feed
 from corpmind.agents.extraction import run_extraction
 from corpmind.agents.matching import prepare_batch_index, phase_a_node, phase_b_node
-from corpmind.agents.enrichment import enrich_product
+from corpmind.agents.enrichment import enrich_product, fields_needing_enrichment
 from corpmind.agents.evaluation import default_judge_call_fn, default_disambiguation_fn
 from corpmind.graph.build_graph import build_graph
 from corpmind.utils.batch_runner import run_batch
@@ -58,7 +58,12 @@ class GraphAdapters:
             for c in with_candidates
         ]
 
-    @rate_limited("extraction_model", estimate_tokens=600.0)
+    @rate_limited(
+        "extraction_model",
+        estimate_tokens=lambda self, normalized_product: (
+            len(fields_needing_enrichment(normalized_product)) * 3 * 600.0
+        ),
+    )
     async def _call_enrichment(self, normalized_product):
         return await asyncio.to_thread(enrich_product, normalized_product)
 
