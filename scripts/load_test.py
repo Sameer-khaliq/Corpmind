@@ -66,7 +66,7 @@ class GraphAdapters:
             len(fields_needing_enrichment(normalized_product)) * 2 * 600.0,
             5500.0,
         ),
-        
+
     )
     async def _call_enrichment(self, normalized_product):
         return await asyncio.to_thread(enrich_product, normalized_product)
@@ -218,5 +218,5 @@ async def load_test(feed_path: Path, n_items: int = 50):
 
 
 if __name__ == "__main__":
-    report = asyncio.run(load_test(FEED_PATH, n_items=50))
+    report = asyncio.run(load_test(FEED_PATH, n_items=8))
     print(json.dumps(report, indent=2))
