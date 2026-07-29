@@ -25,13 +25,15 @@ class GraphAdapters:
         self.client = client
         self._extracted_products = []
         self._batch_index = None
+        self._llama_8b_lock = asyncio.Semaphore(1)  # serialize ALL calls to this model — no concurrent races on the bucket
 
-    @rate_limited("extraction_model", estimate_tokens=700.0 * 3)  # worst case: 1 original + 2 reprompts
+    @rate_limited("extraction_model", estimate_tokens=700.0*3)
     async def _call_extraction(self, raw_row):
         return await asyncio.to_thread(run_extraction, self.client, [raw_row])
 
     async def extraction_fn(self, raw_row):
-        result = await self._call_extraction(raw_row)
+        async with self._llama_8b_lock:
+            result = await self._call_extraction(raw_row)
         product = result[0]
         self._extracted_products.append(product)
         return product
@@ -62,15 +64,15 @@ class GraphAdapters:
         "extraction_model",
         estimate_tokens=lambda self, normalized_product: min(
             len(fields_needing_enrichment(normalized_product)) * 2 * 600.0,
-            5500.0,  # stay under the 6000 TPM bucket capacity — a request
-                     # that exceeds total capacity can never be satisfied
+            5500.0,
         ),
     )
     async def _call_enrichment(self, normalized_product):
         return await asyncio.to_thread(enrich_product, normalized_product)
 
     async def enrichment_fn(self, normalized_product, _unused=None):
-        result = await self._call_enrichment(normalized_product)
+        async with self._llama_8b_lock:
+            result = await self._call_enrichment(normalized_product)
         return {
             "catalog_id": result.catalog_id,
             "field_results": [fr.model_dump() for fr in result.field_results],
