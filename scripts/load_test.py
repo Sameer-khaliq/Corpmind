@@ -60,8 +60,10 @@ class GraphAdapters:
 
     @rate_limited(
         "extraction_model",
-        estimate_tokens=lambda self, normalized_product: (
-            len(fields_needing_enrichment(normalized_product)) * 3 * 600.0
+        estimate_tokens=lambda self, normalized_product: min(
+            len(fields_needing_enrichment(normalized_product)) * 2 * 600.0,
+            5500.0,  # stay under the 6000 TPM bucket capacity — a request
+                     # that exceeds total capacity can never be satisfied
         ),
     )
     async def _call_enrichment(self, normalized_product):
