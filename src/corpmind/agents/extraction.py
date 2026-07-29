@@ -32,21 +32,31 @@ SYSTEM_PROMPT = (
     "object with a `rows` array. Each row has a `source_row_index` and "
     "`raw_fields` (arbitrary supplier-provided fields, names and structure "
     "vary; some values may be null).\n\n"
-    "For EVERY row, extract these fields: "
-    + ", ".join(EXTRACTABLE_FIELDS) + ".\n\n"
+    "For EVERY row, extract these fields: title, brand, category, color, material, size, price, sku, description.\n"
+    "CATEGORY is a CONTROLLED field — the value MUST be exactly one of these, "
+    "never free text from the source data:\n"
+    '["casual-shoes", "handbags", "jeans", "shirts", "tops", "tshirts"]\n'
+    "Source data often gives a broad/generic label (e.g. 'women's clothing', "
+    "'men's clothing', 'footwear'). You must infer the correct SPECIFIC category "
+    "from the product title's keywords instead of copying the source label "
+    "verbatim. Example: raw_fields category = 'women's clothing', title = "
+    "'Cotton V-Neck Casual Top' -> category value = 'tops'. If the title gives "
+    "no reliable signal for which specific category applies, flag low "
+    "confidence rather than guessing.\n\n"
+    "PRICE must be a plain decimal number as a string, with currency symbols, "
+    "commas, and whitespace stripped (e.g. '₹1,200' -> '1200.00', '$49.99' -> "
+    "'49.99'). Never include a currency symbol in the value.\n\n"
     "Return ONLY a JSON object of the form:\n"
-    '{"items": [{"source_row_index": <int>, '
-    '"title": {"value": <string or null>, "confidence": 0.0-1.0}, '
-    '"brand": {"value": ..., "confidence": ...}, ...}, ...]}\n\n'
+    '{"items": [{"source_row_index": <int>, "title": {"value": <string or null>, '
+    '"confidence": 0.0-1.0}, "brand": {"value": ..., "confidence": ...}, ...}, ...]}\n'
     "Rules:\n"
     "- Return exactly one item per input row, in the same order.\n"
-    "- `value` is a plain string or null. NEVER invent a value that isn't "
-    "grounded in raw_fields.\n"
-    "- `title` and `category` should almost always be extractable — flag "
-    "low confidence rather than guessing if genuinely unclear.\n"
+    "- `value` is a plain string or null. NEVER invent a value that isn't grounded in raw_fields.\n"
+    "- `title` and `category` should almost always be extractable — flag low confidence rather than guessing if genuinely unclear.\n"
+    "- `category` must always be one of the six controlled values listed above, never source-data free text.\n"
+    "- `price` must have currency symbols and separators stripped, plain decimal only.\n"
     "- Output must be valid JSON. No prose, no markdown fences."
 )
-
 
 def _build_user_prompt(rows: list[RawProduct]) -> str:
     payload = [
@@ -57,27 +67,26 @@ def _build_user_prompt(rows: list[RawProduct]) -> str:
 import time
 from corpmind.observability.token_tracker import tracker
 
-def _call_llm(client: Any, messages: list[dict], batch_size: int = 1) -> str:
-    start_time = time.monotonic()
+from corpmind.utils.rate_limiter import rate_limited
 
+
+def _call_llm(client: Any, messages: list[dict]) -> str:
+    start_time = time.monotonic()
     response = client.chat.completions.create(
         model=settings.extraction_model,
         messages=messages,
         temperature=0,
         response_format={"type": "json_object"},
     )
-
     latency_s = time.monotonic() - start_time
-
     if hasattr(response, "usage") and response.usage:
         tracker.record(
             stage="extraction",
             prompt_tokens=response.usage.prompt_tokens,
             completion_tokens=response.usage.completion_tokens,
             latency_s=latency_s,
-            batch_size=batch_size,   
+            batch_size=1,
         )
-
     return response.choices[0].message.content
 
 
@@ -129,6 +138,7 @@ def _parse_response(
 
 def _flagged_product(row: RawProduct, error: str | None) -> NormalizedProduct:
     return NormalizedProduct.model_construct(
+        item_id=f"item_{row.source_row_index}",
         supplier_id=row.supplier_id,
         source_row_index=row.source_row_index,
         title=UNRESOLVED_TITLE_MARKER,
