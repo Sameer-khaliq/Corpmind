@@ -66,6 +66,7 @@ class GraphAdapters:
             len(fields_needing_enrichment(normalized_product)) * 2 * 600.0,
             5500.0,
         ),
+        
     )
     async def _call_enrichment(self, normalized_product):
         return await asyncio.to_thread(enrich_product, normalized_product)
