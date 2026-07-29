@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     MATCH_LOW_CUTOFF: float = 0.008
     # --- Model routing (per role, not hardcoded at call sites) --------
     extraction_model: str = "llama-3.1-8b-instant"
-    embeddings_model: str = "gemini-embeddings-001"
+    embeddings_model: str = "gemini-embedding-001"
     escalation_model: str = "llama-3.3-70b-versatile"
     judge_model: str = "gemini-2.5-flash"
     judge_fallback_model: str = "llama-3.3-70b-versatile"
