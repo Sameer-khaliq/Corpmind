@@ -36,6 +36,7 @@ class GraphAdapters:
             result = await self._call_extraction(raw_row)
         product = result[0]
         self._extracted_products.append(product)
+        print(f"[extraction] done {len(self._extracted_products)} — row {raw_row.source_row_index}", flush=True)  # TEMP
         return product
 
     async def phase_a_fn(self, normalized_product):
@@ -72,8 +73,10 @@ class GraphAdapters:
         return await asyncio.to_thread(enrich_product, normalized_product)
 
     async def enrichment_fn(self, normalized_product, _unused=None):
+        print(f"[enrichment] starting for row {normalized_product.source_row_index}", flush=True)  # TEMP
         async with self._llama_8b_lock:
             result = await self._call_enrichment(normalized_product)
+        print(f"[enrichment] done for row {normalized_product.source_row_index}", flush=True)  # TEMP
         return {
             "catalog_id": result.catalog_id,
             "field_results": [fr.model_dump() for fr in result.field_results],
@@ -189,7 +192,9 @@ async def load_test(feed_path: Path, n_items: int = 50):
             f"Need at least {n_items + 3} rows (3 warm-up + {n_items} real), got {len(all_raw)}"
         )
 
+    print(f"[load_test] warm-up starting (3 items)...", flush=True)  # TEMP
     await warm_up(client, all_raw, n=3)
+    print(f"[load_test] warm-up done. Starting REAL {n_items}-item run...", flush=True)  # TEMP
     real_raw = all_raw[3:3 + n_items]
 
     graph = build_real_graph(client)  # fresh adapters — no state leak from warm-up
@@ -198,7 +203,7 @@ async def load_test(feed_path: Path, n_items: int = 50):
     start = time.monotonic()
     result = await run_batch(real_state, graph=graph)
     elapsed = time.monotonic() - start
-
+    print(f"[load_test] REAL run complete in {elapsed:.1f}s", flush=True)  # TEMP
     per_item_seconds = elapsed / n_items
     projected_500_minutes = (per_item_seconds * 500) / 60
 
