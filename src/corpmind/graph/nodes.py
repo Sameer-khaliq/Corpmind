@@ -278,7 +278,8 @@ def make_extract_and_match_node(
 
     @traceable(name="extract_and_match_node", tags=make_trace_tags("extract_and_match"))
     async def _node(state: BatchState) -> dict:
-        raw_rows = state.get("supplier_feeds_rows", [])  # WIRING: confirm real key — supplier_feeds is list[str] (file paths?) per your schema; adjust once ingestion.py's real contract is confirmed
+        
+        raw_rows = [item["raw_row"] for item in state.get("items", [])]  # WIRING: confirm real key — supplier_feeds is list[str] (file paths?) per your schema; adjust once ingestion.py's real contract is confirmed
         semaphore = asyncio.Semaphore(extraction_concurrency)
 
         async def extract_one(raw_row: dict) -> dict:
@@ -414,13 +415,12 @@ def make_evaluate_only_node(
                 overall_reason="Pipeline structural failure: item reached evaluate_only_node without a valid match_result state."
             )
             
-            # Construct Audit Log Entry
             err_audit = AuditLogEntry(
-                timestamp=time.time(),
-                stage="evaluation",
-                status="ERROR",
-                message="Missing match_result context before reaching evaluation node.",
-                metadata={}
+                catalog_id="unknown_structural_bypass",
+                agent="evaluate_only_node",
+                action="flagged_for_review",
+                reason="Pipeline structural failure: item reached evaluate_only_node without a valid match_result state.",
+                audit_tag="structural_bug",
             )
             
             # Append safely to state metrics tracking
