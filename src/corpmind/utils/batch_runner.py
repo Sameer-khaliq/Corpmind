@@ -58,6 +58,7 @@ import asyncio
 import time
 
 from corpmind.graph.build_graph import build_graph
+from corpmind.graph.nodes import generate_report
 
 try:
     from corpmind.config import settings  # type: ignore
@@ -163,17 +164,33 @@ async def _load_test() -> None:
     call_timestamps.clear()
     t_start = time.monotonic()
 
-    graph = build_graph(extraction_fn=mocked_extraction_fn)
+    graph = build_graph(
+        extraction_fn=mocked_extraction_fn,
+        # This checkpoint is about rate-limiter pacing, not the consistency
+        # agent — which isn't built yet (separate, legitimate gap, not a bug
+        # to route around silently). Scoping a no-op stub HERE, local to this
+        # test, keeps that unrelated gap from blocking the thing this
+        # checkpoint is actually meant to prove.
+        consistency_fn=lambda item: {"catalog_id": item.get("match_result").catalog_id if item.get("match_result") else None, "note": "load-test stub, not a real ConsistentProduct"},
+    )
 
     synthetic_rows = [{"extraction_id": f"row-{i}", "title": f"Synthetic Item {i}"} for i in range(N_ITEMS)]
-    initial_state = {"feed_descriptor": {"rows": synthetic_rows}}
+    # Real extract_and_match_node reads raw_row per item from state["items"]
+    # (see nodes.py) — feed_descriptor was a pre-rebuild field name that no
+    # longer exists on BatchState.
+    initial_state = {"raw_rows": [{"raw_row": row} for row in synthetic_rows]}
 
     t0 = time.monotonic()
     final_state = await run_batch(initial_state, max_concurrency=MAX_CONCURRENCY, graph=graph)
     elapsed = time.monotonic() - t0
 
     assert len(call_timestamps) == N_ITEMS, f"expected {N_ITEMS} extraction calls, got {len(call_timestamps)}"
-    assert len(final_state.get("phase_a_out", [])) == N_ITEMS
+    total_processed = len(final_state.get("accepted_items", [])) + len(final_state.get("flagged_items", []))
+    assert total_processed == N_ITEMS, (
+        f"expected {N_ITEMS} items to land in accepted_items+flagged_items combined, got {total_processed} "
+        f"(accepted={len(final_state.get('accepted_items', []))}, flagged={len(final_state.get('flagged_items', []))}) "
+        "— a mismatch here is exactly the kind of signal worth treating as a real bug, not noise"
+    )
 
     # The actual done-checkpoint: no 60-second sliding window may contain
     # more than TEST_RPM calls, checked by inspecting the recorded
@@ -187,7 +204,7 @@ async def _load_test() -> None:
           f"never exceeded {TEST_RPM} RPM in steady state (verified via {len(call_timestamps)} recorded "
           f"timestamps, not absence-of-error)")
     print(f"  elapsed: {elapsed:.2f}s")
-    print(f"  report: {final_state['report']}")
+    print(f"  report: {generate_report(final_state)}")
 
     # Sanity check in the OTHER direction too: prove the bucket is actually
     # doing something, not just permissive-by-accident. 500 calls at 30/min
