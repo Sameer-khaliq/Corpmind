@@ -153,28 +153,16 @@ def build_real_graph(client):
     )
     return graph
 def build_batch_state(raw_products: list, batch_id: str) -> dict:
-    items = [
-        {
-            "raw_row": rp,
-            "normalized_product": None,
-            "match_result": None,
-            "enrichment_result": None,
-            "evaluation_record": None,
-            "consistent_output": None,
-            "audit_entries": [],
-            "error": None,
-        }
-        for rp in raw_products
-    ]
+    raw_rows = [{"raw_row": rp} for rp in raw_products]
     return {
         "batch_id": batch_id,
         "supplier_feeds": [str(FEED_PATH)],
-        "items": items,
+        "raw_rows": raw_rows,          # ← "items" ki jagah "raw_rows"
+        "items": [],                    # extract_and_match_node isko khud populate karega
         "accepted_items": [],
         "flagged_items": [],
         "audit_log": [],
     }
-
 
 async def warm_up(client, all_raw_products: list, n: int = 3):
     graph = build_real_graph(client)
@@ -215,13 +203,49 @@ async def load_test(feed_path: Path, n_items: int = 50):
         "token_summary": tracker.summary(),
         "accepted": len(result.get("accepted_items", [])),
         "flagged": len(result.get("flagged_items", [])),
+        "audit_log_entries": len(result.get("audit_log", [])), 
     }
 
     Path("logs").mkdir(exist_ok=True)
     Path("logs/day17_load_test_report.json").write_text(json.dumps(report, indent=2))
+    print("\n🔍 ====== DEBUGGING REJECTED/FLAGGED ITEMS ======", flush=True)
+    flagged_items = result.get("flagged_items", [])
+    
+    if flagged_items:
+        print(f"Total Flagged Items Found: {len(flagged_items)}", flush=True)
+        sample_item = flagged_items[0]
+        
+        # Safe extraction agar dictionary structure hai ya object wrapper
+        source_idx = sample_item.get('source_row_index', 'N/A') if isinstance(sample_item, dict) else getattr(sample_item, 'source_row_index', 'N/A')
+        title_val = sample_item.get('title', 'N/A') if isinstance(sample_item, dict) else getattr(sample_item, 'title', 'N/A')
+        
+        print(f"▶️ Sample Flagged Item Row Index: {source_idx}", flush=True)
+        print(f"Product Title: {title_val}", flush=True)
+        
+        # Evaluation record analysis block
+        eval_record = sample_item.get("evaluation_record", {}) if isinstance(sample_item, dict) else getattr(sample_item, "evaluation_record", None)
+        
+        if eval_record:
+            if isinstance(eval_record, dict):
+                overall_reason = eval_record.get("overall_reason", "No overall_reason key found in dict")
+                f_score = eval_record.get('faithfulness_score', 'N/A')
+                c_score = eval_record.get('confidence_score', 'N/A')
+            else:
+                overall_reason = getattr(eval_record, "overall_reason", "No overall_reason attribute found")
+                f_score = getattr(eval_record, 'faithfulness_score', 'N/A')
+                c_score = getattr(eval_record, 'confidence_score', 'N/A')
+                
+            print(f"🛑 Genuinely REJECTED/FLAGGED Reason: {overall_reason}", flush=True)
+            print(f"Faithfulness Score: {f_score}", flush=True)
+            print(f"Confidence Score: {c_score}", flush=True)
+        else:
+            print("Warning: evaluation_record missing or None for this flagged item!", flush=True)
+    else:
+        print("No flagged items found in this batch execution state!", flush=True)
+    print("=================================================\n", flush=True)
     return report
 
 
 if __name__ == "__main__":
-    report = asyncio.run(load_test(FEED_PATH, n_items=8))
+    report = asyncio.run(load_test(FEED_PATH, n_items=6))
     print(json.dumps(report, indent=2))
