@@ -38,9 +38,9 @@ class BatchState(TypedDict, total=False):
     """Parent/batch-level state. Annotated[..., operator.add] fields are
     reducers — LangGraph appends each Send-dispatched branch's contribution
     instead of the last branch overwriting the others at the join."""
-
     batch_id: str
-    supplier_feeds: list[str]
+    supplier_feeds: list
+    raw_rows: list[dict]              #
     items: Annotated[list[ItemState], operator.add]
     accepted_items: Annotated[list[ConsistentProduct], operator.add]
     flagged_items: Annotated[list[ItemState], operator.add]
