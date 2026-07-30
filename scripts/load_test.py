@@ -185,13 +185,17 @@ async def load_test(feed_path: Path, n_items: int = 50):
     print(f"[load_test] warm-up done. Starting REAL {n_items}-item run...", flush=True)  # TEMP
     real_raw = all_raw[3:3 + n_items]
 
-    graph = build_real_graph(client)  # fresh adapters — no state leak from warm-up
+    graph = build_real_graph(client)  
     real_state = build_batch_state(real_raw, batch_id=f"day17-{uuid.uuid4().hex[:8]}")
 
     start = time.monotonic()
     result = await run_batch(real_state, graph=graph)
     elapsed = time.monotonic() - start
     print(f"[load_test] REAL run complete in {elapsed:.1f}s", flush=True)  # TEMP
+    from corpmind.agents.report import generate_report
+    report_summary = generate_report(result)
+    print("[load_test] Day 18 report:", json.dumps(report_summary, indent=2), flush=True)
+
     per_item_seconds = elapsed / n_items
     projected_500_minutes = (per_item_seconds * 500) / 60
 
