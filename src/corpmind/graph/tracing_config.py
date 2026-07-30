@@ -199,12 +199,39 @@ class SchemaRepairExhaustedError(Exception):
 def classify_api_exception(exc: Exception, *, retry_after: float | None = None) -> Exception:
     name = type(exc).__name__.lower()
     message = str(exc).lower()
+    
+    # 1. VectorStore errors check
     if "vectorstore" in name or "chroma" in name or "collection" in message:
         return VectorStoreFatalError(str(exc))
-    if retry_after is not None or "429" in message or "rate limit" in message:
+        
+    # 2. Extract Groq / OpenAI dynamic response body if available to check for 'rate_limit_exceeded'
+    error_code_body = ""
+    if hasattr(exc, "response") and exc.response is not None:
+        try:
+            body = exc.response.json()
+            if isinstance(body, dict) and "error" in body:
+                error_code_body = str(body["error"].get("code", "")).lower()
+        except Exception:
+            pass
+
+    # 3. Rate Limit / TPM ceiling match (including Groq's 413 and rate_limit_exceeded with underscore)
+    is_rate_limit = (
+        retry_after is not None or 
+        "429" in message or 
+        "413" in message or             # Groq TPM code trap
+        "rate limit" in message or 
+        "rate_limit" in message or       # Underscore support
+        "rate_limit_exceeded" in error_code_body or
+        "tpm" in message                 # Tokens per minute boundary match
+    )
+
+    if is_rate_limit:
         return TransientAPIError(f"rate limited (retry_after={retry_after}): {exc}")
+        
+    # 4. Other network/transient exceptions check
     if any(tok in message for tok in ("timeout", "timed out", "connection", "5xx", "502", "503", "504")):
         return TransientAPIError(str(exc))
+        
     return exc
 
 
