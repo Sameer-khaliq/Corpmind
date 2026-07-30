@@ -69,6 +69,8 @@ def build_graph(
     extraction_fn=None,
     phase_a_fn=None,
     phase_b_fn=None,
+    prepare_batch_index_fn=None,
+    write_new_products_fn=None,
     enrichment_fn=None,
     judge_call_fn=None,
     disambiguation_fn=None,
@@ -83,6 +85,10 @@ def build_graph(
         match_kwargs["phase_a_fn"] = phase_a_fn
     if phase_b_fn:
         match_kwargs["phase_b_fn"] = phase_b_fn
+    if prepare_batch_index_fn:
+        match_kwargs["prepare_batch_index_fn"] = prepare_batch_index_fn
+    if write_new_products_fn:
+        match_kwargs["write_new_products_fn"] = write_new_products_fn
 
     enrich_kwargs = {}
     if enrichment_fn:
@@ -130,20 +136,15 @@ class _ManualGraphRunner:
             return res if isinstance(res, dict) else {}
 
         state = dict(initial_state)
-        
-        # State Extraction Fix: Fallback inject to guarantee that state tracking doesn't drop
-        node_updates = await run("extract_and_match", state)
-        state.update(node_updates)
-        state = dict(initial_state)
-        # Node chalao
         node_updates = await run("extract_and_match", state)
         if isinstance(node_updates, dict):
             state.update(node_updates)
-            
-        #  EXACT GUARANTEE GUARD: Agar items key nahi bani, toh supplier rows se populate karo
+
+        # Fallback: some smoke-test inputs seed items under supplier_feeds_rows
+        # instead of items — only applies if extract_and_match didn't already
+        # populate items itself.
         if "items" not in state and "supplier_feeds_rows" in state:
             state["items"] = state["supplier_feeds_rows"]
-        
 
         sends = route_after_matching(state)
         results = await asyncio.gather(*[run(send.node, send.arg) for send in sends])
@@ -153,15 +154,6 @@ class _ManualGraphRunner:
             if r:
                 accepted.extend(r.get("accepted_items", []))
                 flagged.extend(r.get("flagged_items", []))
-                
-        # Fallback to make smoke test self-contained if results were empty stubs
-        if not accepted and not flagged and state.get("items"):
-            # Mock friendly REJECT_TO_REVIEW target to hit the intended gap check cleanly
-            flagged.append({
-                "source_row_index": 0, 
-                "title": state["items"][0].get("title", ""),
-                "reason": "Smoke test automated evaluation routing"
-            })
 
         state["accepted_items"] = state.get("accepted_items", []) + accepted
         state["flagged_items"] = state.get("flagged_items", []) + flagged
@@ -182,16 +174,22 @@ async def _main() -> None:
         "supplier_feeds_rows": [
             {"extraction_id": "row-0", "title": "Men's Cotton Crew Neck T-Shirt", "brand": "ExampleBrand", "color": "navy blue", "price": "19.99"}
         ],
-        # 1. Pre-populate items block taake validation requirements hit ho sakein
+        # match_result belongs on each item inside `items`, not on BatchState
+        # itself — route_after_matching reads item.get("match_result") per
+        # item. Setting it at the batch level (as an earlier version of this
+        # test did) meant it was silently ignored: the item had no
+        # match_result, so route_after_matching's else-branch sent it to
+        # evaluate_only no matter what decision was "intended" here.
         "items": [
-            {"extraction_id": "row-0", "title": "Men's Cotton Crew Neck T-Shirt", "brand": "ExampleBrand", "color": "navy blue", "price": "19.99"}
+            {
+                "extraction_id": "row-0",
+                "title": "Men's Cotton Crew Neck T-Shirt",
+                "brand": "ExampleBrand",
+                "color": "navy blue",
+                "price": "19.99",
+                "match_result": {"decision": "NEW_PRODUCT", "candidate_pairs": [], "scores": {}},
+            }
         ],
-        # 2. 🔥 THE FIX: Inject mock match_result to satisfy evaluate_only node's state lookup
-        "match_result": {
-            "decision": "NEW_PRODUCT",  # Tries to naturally route or bypass gaps
-            "candidate_pairs": [],
-            "scores": {}
-        }
     }
 
     try:
@@ -202,9 +200,12 @@ async def _main() -> None:
     except NotImplementedError as e:
         print("[Day 14] Wiring successfully reaches the expected implementation gap:", e)
         print("  This IS the expected structural milestone — your graph wiring is 100% correct!")
-    except Exception as e:
-        # Catch-all for any other inner schemas/contracts constraints so it never breaks CI
-        print(f"[Day 14] Structural Flow Pass — Traversed node pipelines successfully. Intercepted: {type(e).__name__}")
+        # Deliberately not swallowed further than this: only the SPECIFIC,
+        # known gap (no consistency_fn wired yet) is treated as an
+        # acceptable stopping point. Anything else below is a real bug and
+        # must surface as one — see the removed catch-all Exception handler
+        # that used to print a "Pass" message for ANY exception type,
+        # including ones that had nothing to do with this gap.
 
     print("\nlanggraph installed:", _HAS_LANGGRAPH, "— using real StateGraph pregel engine workflow")
 if __name__ == "__main__":
