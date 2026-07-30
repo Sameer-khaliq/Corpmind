@@ -58,14 +58,19 @@ if __name__ == "__main__":
         def __init__(self, d):
             self.decision = d
 
-    fake_state: BatchState = {  # type: ignore[typeddict-item]
-        "items": [
-            {"match_result": _M(MatchDecision.NEW_PRODUCT)},
-            {"match_result": _M(MatchDecision.MATCHED_EXISTING)},
-            {"match_result": _M(MatchDecision.AMBIGUOUS)},
-        ]
+    single_item_input: BatchState = {  # type: ignore[typeddict-item]
+    "batch_id": "smoke-test-batch",
+    "raw_rows": [
+        {"raw_row": {"extraction_id": "row-0", "title": "Men's Cotton Crew Neck T-Shirt",
+                      "brand": "ExampleBrand", "color": "navy blue", "price": "19.99"}}
+    ],
+    # match_result ab yahan hand-craft nahi karna — extract_and_match_node
+    # khud isse compute karega (stub phase_b_fn: i=0 -> NEW_PRODUCT by design),
+    # jo yeh test asal mein chahta tha. Real extraction/matching path se
+    # guzarna, bypass karna nahi — yehi "end-to-end through real LangGraph
+    # engine" ka matlab hai.
     }
-    routed = route_after_matching(fake_state)
+    routed = route_after_matching(single_item_input)
     targets = [s.node for s in routed]
     assert targets == ["evaluate_only", "enrich_and_evaluate", "evaluate_only"], targets
     print("[edges] PASS — route_after_matching dispatches correctly:", targets)
