@@ -1,21 +1,10 @@
 # CorpMind — Catalog Reconciliation Change Report
 
-- Accepted: 6
-- Flagged for review: 0
+- Accepted: 5
+- Flagged for review: 1
 - Total audit log entries: 6
 
-## Accepted (6)
-
-### KeepCart Women Tummy Control Shapewear High Waist Trainer Thigh Slimmer (`CM-6dbf0bd94505`)
-- Category: shirts
-- Brand: KeepCart
-- Price: 397.00
-- Decision: accepted by `enrich_and_evaluate_node` — ACCEPT — match_eval and all field_evals passed.
-- Full decision chain (4 entries):
-  - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
-  - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
-  - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
-  - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
+## Accepted (5)
 
 ### FLYNGO 2 Pair Nipple Covers Reusable Comfortable Invisible Adhesive Silicone Pasties for Women (`CM-bde53e8162a7`)
 - Category: tops
@@ -32,7 +21,7 @@
 - Price: 299.00
 - Decision: accepted by `enrich_and_evaluate_node` — ACCEPT — match_eval and all field_evals passed.
 - Full decision chain (4 entries):
-  - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
+  - `enrich_and_evaluate_node` → flagged_for_review: REJECT_TO_REVIEW — field_eval(s) rejected for: description [evaluation_verdict]
   - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
   - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
   - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
@@ -43,7 +32,7 @@
 - Price: 659.00
 - Decision: accepted by `enrich_and_evaluate_node` — ACCEPT — match_eval and all field_evals passed.
 - Full decision chain (4 entries):
-  - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
+  - `enrich_and_evaluate_node` → flagged_for_review: REJECT_TO_REVIEW — field_eval(s) rejected for: description [evaluation_verdict]
   - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
   - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
   - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
@@ -63,11 +52,18 @@
 - Price: 845.00
 - Decision: accepted by `enrich_and_evaluate_node` — ACCEPT — match_eval and all field_evals passed.
 - Full decision chain (4 entries):
-  - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
+  - `enrich_and_evaluate_node` → flagged_for_review: REJECT_TO_REVIEW — field_eval(s) rejected for: description [evaluation_verdict]
   - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
   - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
   - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
 
-## Flagged for review (0)
+## Flagged for review (1)
 
-_No items were flagged in this batch._
+### KeepCart Women Tummy Control Shapewear High Waist Trainer Thigh Slimmer (`CM-6dbf0bd94505`)
+- Reason: flagged by `enrich_and_evaluate_node` — ACCEPT — match_eval and all field_evals passed.
+- Tag: evaluation_verdict
+- Full decision chain (4 entries):
+  - `enrich_and_evaluate_node` → flagged_for_review: REJECT_TO_REVIEW — field_eval(s) rejected for: description [evaluation_verdict]
+  - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
+  - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
+  - `enrich_and_evaluate_node` → accepted: ACCEPT — match_eval and all field_evals passed. [evaluation_verdict]
