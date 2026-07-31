@@ -52,7 +52,6 @@ from typing import Literal
 try:
     from corpmind.schemas.audit import AuditLogEntry
     from corpmind.schemas.consistent import ConsistentProduct
-    from corpmind.schemas.state import ItemState
 except ModuleNotFoundError:
     # Sandbox-only fallback so this file is standalone-testable without the
     # full corpmind package on the path. Real machine imports above win.
@@ -75,7 +74,7 @@ except ModuleNotFoundError:
         price: object = None
         attributes: dict = {}
 
-    ItemState = dict  # type: ignore[misc,assignment]
+    ItemState = dict 
 
 
 def _index_audit_log(audit_log: list[AuditLogEntry]) -> dict[str, list[AuditLogEntry]]:
