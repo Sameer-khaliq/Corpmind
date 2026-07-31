@@ -183,10 +183,42 @@ def resolve_batch(
                     results[m] = MatchResult(decision=MatchDecision.AMBIGUOUS,
                                               catalog_id=None, rrf_score=best_score[m])
         elif len(new_members) > 1:
-            new_id = _mint_catalog_id()
+            # BUG FIX: this branch had NO pairwise verification at all —
+            # it blindly minted one catalog_id for every member of a
+            # union-find cluster, trusting transitive chains (A-B and B-C
+            # both > cutoff) as proof A-B-C are all the same product. This
+            # is exactly what merged 4 unrelated products (shapewear,
+            # saree, kurta, kurta-set) into one catalog_id in a real run —
+            # they all extracted to the same (likely wrong) category and
+            # chained together through pairwise dense-similarity, never
+            # verified as a full mutual match. Same clique-verification
+            # guard as the existing_members==1 branch above: only merge
+            # members that are pairwise directly linked > high_cutoff to
+            # EVERY other member. Anything that doesn't form a full clique
+            # is split out — each gets its own independent NEW_PRODUCT
+            # catalog_id rather than being force-merged. This is a
+            # simplification (a partial clique of 3-out-of-4 members still
+            # gets fully split rather than kept together) — acceptable
+            # since NFR explicitly weights precision over recall here.
+            verified_group: list[str] = []
+            split_out: list[str] = []
             for m in new_members:
+                others = [o for o in new_members if o != m]
+                if all(
+                    direct_new_new_score.get(frozenset((m, o)), float("-inf")) > high_cutoff
+                    for o in others
+                ):
+                    verified_group.append(m)
+                else:
+                    split_out.append(m)
+            if verified_group:
+                new_id = _mint_catalog_id()
+                for m in verified_group:
+                    results[m] = MatchResult(decision=MatchDecision.NEW_PRODUCT,
+                                              catalog_id=new_id, rrf_score=best_score[m])
+            for m in split_out:
                 results[m] = MatchResult(decision=MatchDecision.NEW_PRODUCT,
-                                          catalog_id=new_id, rrf_score=best_score[m])
+                                          catalog_id=_mint_catalog_id(), rrf_score=best_score[m])
 
     for item_id in new_item_ids:
         if item_id not in results:
