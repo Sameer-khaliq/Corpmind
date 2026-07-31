@@ -251,5 +251,5 @@ async def load_test(feed_path: Path, n_items: int = 50):
 
 
 if __name__ == "__main__":
-    report = asyncio.run(load_test(FEED_PATH, n_items=6))
+    report = asyncio.run(load_test(FEED_PATH, n_items=5))
     print(json.dumps(report, indent=2))
