@@ -1,8 +1,8 @@
 {
   "n_items": 6,
-  "elapsed_seconds": 338.2649999999994,
-  "per_item_seconds": 56.377499999999905,
-  "projected_500_minutes": 469.8124999999992,
+  "elapsed_seconds": 321.89100000000326,
+  "per_item_seconds": 53.648500000000546,
+  "projected_500_minutes": 447.0708333333379,
   "token_summary": {
     "extraction": {
       "calls": 6,
@@ -10,26 +10,26 @@
       "avg_prompt_tokens_per_item": 723.3333333333334,
       "avg_completion_tokens_per_item": 329.5,
       "avg_total_tokens_per_item": 1052.8333333333333,
-      "avg_latency_per_call_s": 0.630166666667113
+      "avg_latency_per_call_s": 0.8021666666675932
     },
     "enrichment": {
       "calls": 12,
       "total_items": 32,
-      "avg_prompt_tokens_per_item": 564.875,
-      "avg_completion_tokens_per_item": 112.15625,
-      "avg_total_tokens_per_item": 677.03125,
-      "avg_latency_per_call_s": 2.9791666666666665
+      "avg_prompt_tokens_per_item": 480.5625,
+      "avg_completion_tokens_per_item": 101.84375,
+      "avg_total_tokens_per_item": 582.40625,
+      "avg_latency_per_call_s": 0.671749999999823
     },
     "evaluation_judge": {
-      "calls": 6,
-      "total_items": 12,
-      "avg_prompt_tokens_per_item": 204.16666666666666,
-      "avg_completion_tokens_per_item": 68.08333333333333,
-      "avg_total_tokens_per_item": 272.25,
-      "avg_latency_per_call_s": 7.476833333332858
+      "calls": 4,
+      "total_items": 7,
+      "avg_prompt_tokens_per_item": 243.85714285714286,
+      "avg_completion_tokens_per_item": 78.42857142857143,
+      "avg_total_tokens_per_item": 322.2857142857143,
+      "avg_latency_per_call_s": 3.7150000000001455
     }
   },
-  "accepted": 4,
-  "flagged": 2,
+  "accepted": 6,
+  "flagged": 0,
   "audit_log_entries": 6
 }
