@@ -117,6 +117,23 @@ def resolve_batch(
             find(p.candidate_id)
             union(p.item_id, p.candidate_id)
 
+    # BUG FIX: direct-pairwise-similarity guard against hub-based false
+    # merging. Union-find above merges A and B into one cluster whenever
+    # BOTH separately score > high_cutoff against the SAME existing item C
+    # — even if A and B were never directly compared to each other. If C
+    # is a stale/contaminated/overly-generic store entry, this silently
+    # merges genuinely unrelated new products (confirmed in a real run:
+    # a shapewear, a kurta, a kurta-set, and a saree all landed in one
+    # cluster this way). Build a direct new-new score lookup from the
+    # actual candidate pairs (which DO include batch-internal new-new
+    # comparisons, candidate_is_existing=False) so multi-new-member
+    # clusters can be verified before being trusted.
+    direct_new_new_score: dict[frozenset[str], float] = {}
+    for p in all_candidate_pairs:
+        if not p.candidate_is_existing and p.item_id in new_item_ids and p.candidate_id in new_item_ids:
+            key = frozenset((p.item_id, p.candidate_id))
+            direct_new_new_score[key] = max(direct_new_new_score.get(key, float("-inf")), p.score)
+
     clusters: dict[str, list[str]] = defaultdict(list)
     for node in parent:
         clusters[find(node)].append(node)
@@ -133,9 +150,38 @@ def resolve_batch(
                 results[m] = MatchResult(decision=MatchDecision.AMBIGUOUS,
                                           catalog_id=None, rrf_score=best_score[m])
         elif len(existing_members) == 1:
-            for m in new_members:
+            if len(new_members) == 1:
+                m = new_members[0]
                 results[m] = MatchResult(decision=MatchDecision.MATCHED_EXISTING,
                                           catalog_id=existing_members[0], rrf_score=best_score[m])
+            else:
+                # GUARD: multiple new items claiming the same existing
+                # catalog entry. Trust this only for members that are also
+                # DIRECTLY pairwise-similar to every other member in this
+                # sub-group — not just independently linked through the
+                # existing item. A member with no direct new-new edge to
+                # at least one other member here is evidence this cluster
+                # was formed by transitive hub-merging through a possibly
+                # bad existing match, not genuine mutual similarity. Route
+                # those to AMBIGUOUS for human review rather than silently
+                # accepting the merge.
+                verified: list[str] = []
+                unverified: list[str] = []
+                for m in new_members:
+                    others = [o for o in new_members if o != m]
+                    if others and all(
+                        direct_new_new_score.get(frozenset((m, o)), float("-inf")) > high_cutoff
+                        for o in others
+                    ):
+                        verified.append(m)
+                    else:
+                        unverified.append(m)
+                for m in verified:
+                    results[m] = MatchResult(decision=MatchDecision.MATCHED_EXISTING,
+                                              catalog_id=existing_members[0], rrf_score=best_score[m])
+                for m in unverified:
+                    results[m] = MatchResult(decision=MatchDecision.AMBIGUOUS,
+                                              catalog_id=None, rrf_score=best_score[m])
         elif len(new_members) > 1:
             new_id = _mint_catalog_id()
             for m in new_members:
