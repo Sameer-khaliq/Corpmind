@@ -157,8 +157,8 @@ def build_batch_state(raw_products: list, batch_id: str) -> dict:
     return {
         "batch_id": batch_id,
         "supplier_feeds": [str(FEED_PATH)],
-        "raw_rows": raw_rows,          # ← "items" ki jagah "raw_rows"
-        "items": [],                    # extract_and_match_node isko khud populate karega
+        "raw_rows": raw_rows,          
+        "items": [],                   
         "accepted_items": [],
         "flagged_items": [],
         "audit_log": [],
