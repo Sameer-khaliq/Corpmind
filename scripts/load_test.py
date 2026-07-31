@@ -212,7 +212,7 @@ async def load_test(feed_path: Path, n_items: int = 50):
 
     Path("logs").mkdir(exist_ok=True)
     Path("logs/day17_load_test_report.json").write_text(json.dumps(report, indent=2))
-    print("\n🔍 ====== DEBUGGING REJECTED/FLAGGED ITEMS ======", flush=True)
+    print("\n====== DEBUGGING REJECTED/FLAGGED ITEMS ======", flush=True)
     flagged_items = result.get("flagged_items", [])
     
     if flagged_items:
@@ -223,7 +223,7 @@ async def load_test(feed_path: Path, n_items: int = 50):
         source_idx = sample_item.get('source_row_index', 'N/A') if isinstance(sample_item, dict) else getattr(sample_item, 'source_row_index', 'N/A')
         title_val = sample_item.get('title', 'N/A') if isinstance(sample_item, dict) else getattr(sample_item, 'title', 'N/A')
         
-        print(f"▶️ Sample Flagged Item Row Index: {source_idx}", flush=True)
+        print(f"Sample Flagged Item Row Index: {source_idx}", flush=True)
         print(f"Product Title: {title_val}", flush=True)
         
         # Evaluation record analysis block
@@ -239,7 +239,7 @@ async def load_test(feed_path: Path, n_items: int = 50):
                 f_score = getattr(eval_record, 'faithfulness_score', 'N/A')
                 c_score = getattr(eval_record, 'confidence_score', 'N/A')
                 
-            print(f"🛑 Genuinely REJECTED/FLAGGED Reason: {overall_reason}", flush=True)
+            print(f"Genuinely REJECTED/FLAGGED Reason: {overall_reason}", flush=True)
             print(f"Faithfulness Score: {f_score}", flush=True)
             print(f"Confidence Score: {c_score}", flush=True)
         else:
