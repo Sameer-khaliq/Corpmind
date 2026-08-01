@@ -1,35 +1,35 @@
 {
-  "n_items": 6,
-  "elapsed_seconds": 318.21900000000096,
-  "per_item_seconds": 53.03650000000016,
-  "projected_500_minutes": 441.97083333333467,
+  "n_items": 5,
+  "elapsed_seconds": 153.04699999999866,
+  "per_item_seconds": 30.60939999999973,
+  "projected_500_minutes": 255.0783333333311,
   "token_summary": {
     "extraction": {
-      "calls": 6,
-      "total_items": 6,
-      "avg_prompt_tokens_per_item": 723.3333333333334,
-      "avg_completion_tokens_per_item": 329.5,
-      "avg_total_tokens_per_item": 1052.8333333333333,
-      "avg_latency_per_call_s": 0.731833333334483
+      "calls": 5,
+      "total_items": 5,
+      "avg_prompt_tokens_per_item": 1026.6,
+      "avg_completion_tokens_per_item": 272.2,
+      "avg_total_tokens_per_item": 1298.8,
+      "avg_latency_per_call_s": 0.8720000000015716
     },
     "enrichment": {
-      "calls": 12,
-      "total_items": 32,
-      "avg_prompt_tokens_per_item": 563.6875,
-      "avg_completion_tokens_per_item": 116.03125,
-      "avg_total_tokens_per_item": 679.71875,
-      "avg_latency_per_call_s": 2.3762499999999513
+      "calls": 4,
+      "total_items": 8,
+      "avg_prompt_tokens_per_item": 599.25,
+      "avg_completion_tokens_per_item": 90.375,
+      "avg_total_tokens_per_item": 689.625,
+      "avg_latency_per_call_s": 0.6912499999998545
     },
     "evaluation_judge": {
-      "calls": 6,
-      "total_items": 11,
-      "avg_prompt_tokens_per_item": 236.63636363636363,
-      "avg_completion_tokens_per_item": 72.18181818181819,
-      "avg_total_tokens_per_item": 308.8181818181818,
-      "avg_latency_per_call_s": 8.590833333333649
+      "calls": 1,
+      "total_items": 2,
+      "avg_prompt_tokens_per_item": 221.5,
+      "avg_completion_tokens_per_item": 85.5,
+      "avg_total_tokens_per_item": 307.0,
+      "avg_latency_per_call_s": 4.171999999998661
     }
   },
-  "accepted": 5,
+  "accepted": 4,
   "flagged": 1,
-  "audit_log_entries": 6
+  "audit_log_entries": 5
 }
