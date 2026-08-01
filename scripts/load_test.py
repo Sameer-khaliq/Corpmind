@@ -16,9 +16,9 @@ from corpmind.agents.evaluation import default_judge_call_fn, default_disambigua
 from corpmind.graph.build_graph import build_graph
 from corpmind.utils.batch_runner import run_batch
 from corpmind.observability.token_tracker import tracker
+from corpmind.utils.rate_limiter import rate_limited
 
 FEED_PATH = Path("data/sample_feeds/day17_amazon_50.csv")
-from corpmind.utils.rate_limiter import rate_limited
 
 class GraphAdapters:
     def __init__(self, client):
@@ -101,7 +101,7 @@ def temp_consistency_fn(item: dict):
 
     price = np.price if (getattr(np, "price", None) and np.price > 0) else None
 
-    valid_categories = {"casual-shoes", "handbags", "jeans", "shirts", "tops", "tshirts"}
+    valid_categories = {"casual-shoes", "handbags", "jeans", "shirts", "tops", "tshirts", "other"}
     category = np.category if np.category in valid_categories else "tops"
     # NOTE: items with unresolved/invalid category (extraction failed to
     # determine one) are force-mapped to a placeholder valid category here
