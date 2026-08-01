@@ -13,6 +13,8 @@ from pydantic import ValidationError
 from corpmind.config import settings
 from corpmind.schemas.raw import RawProduct
 from corpmind.schemas.extraction import FieldExtraction, NormalizedProduct
+import time
+from corpmind.observability.token_tracker import tracker
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +27,7 @@ EXTRACTABLE_FIELDS = (
 )
 
 UNRESOLVED_TITLE_MARKER = "[UNRESOLVED — see extraction_warnings]"
-UNRESOLVED_CATEGORY_MARKER = "needs_review"  
+UNRESOLVED_CATEGORY_MARKER = "other"  
 
 SYSTEM_PROMPT = (
     "You are a catalog data extraction engine. You will receive a JSON "
@@ -35,7 +37,7 @@ SYSTEM_PROMPT = (
     "For EVERY row, extract these fields: title, brand, category, color, material, size, price, sku, description.\n"
     "CATEGORY is a CONTROLLED field — the value MUST be exactly one of these, "
     "never free text from the source data:\n"
-    '["casual-shoes", "handbags", "jeans", "shirts", "tops", "tshirts"]\n'
+    '["casual-shoes", "handbags", "jeans", "shirts", "tops", "tshirts","other"]\n'
     "Source data often gives a broad/generic label (e.g. 'women's clothing', "
     "'men's clothing', 'footwear'). You must infer the correct SPECIFIC category "
     "from the product title's keywords instead of copying the source label "
@@ -43,6 +45,25 @@ SYSTEM_PROMPT = (
     "'Cotton V-Neck Casual Top' -> category value = 'tops'. If the title gives "
     "no reliable signal for which specific category applies, flag low "
     "confidence rather than guessing.\n\n"
+    "WHEN TO USE 'other': use 'other' for any product whose actual use-case "
+    "is NOT one of the six real categories, even if its fabric or wearable "
+    "nature makes it sound related. Do not pick the closest-SOUNDING real "
+    "category — pick based on what the product actually IS and is used for. "
+    "In particular:\n"
+    "- Accessories worn WITH clothing but not themselves a garment (belts, "
+    "scarves, jewelry, sunglasses, watches) -> 'other', never 'shirts'/'tops'/etc.\n"
+    "- Undergarments, shapewear, and intimates -> 'other', never 'shirts'/'tops', "
+    "even though they are fabric and worn on the torso.\n"
+    "- Footwear that isn't specifically casual shoes -> 'other'.\n"
+    "- Bags that aren't specifically handbags -> 'other'.\n"
+    "Examples of correct classification:\n"
+    "  title = \"Metal Adjustable Belt for Saree, Western Dress\" -> category = 'other' "
+    "(it's an accessory, not a garment — do not classify by the dresses it's used with)\n"
+    "  title = \"Women Tummy Control Shapewear High Waist Trainer\" -> category = 'other' "
+    "(shapewear/undergarment, not a shirt or top)\n"
+    "  title = \"Retro Rectangular Sunglasses Black Frame\" -> category = 'other' "
+    "(eyewear, not clothing at all)\n"
+    "  title = \"Cotton V-Neck Casual Top\" -> category = 'tops' (this genuinely is a top)\n\n"
     "PRICE must be a plain decimal number as a string, with currency symbols, "
     "commas, and whitespace stripped (e.g. '₹1,200' -> '1200.00', '$49.99' -> "
     "'49.99'). Never include a currency symbol in the value.\n\n"
@@ -53,7 +74,7 @@ SYSTEM_PROMPT = (
     "- Return exactly one item per input row, in the same order.\n"
     "- `value` is a plain string or null. NEVER invent a value that isn't grounded in raw_fields.\n"
     "- `title` and `category` should almost always be extractable — flag low confidence rather than guessing if genuinely unclear.\n"
-    "- `category` must always be one of the six controlled values listed above, never source-data free text.\n"
+    "- `category` must always be one of the seven controlled values listed above, never source-data free text.\n"
     "- `price` must have currency symbols and separators stripped, plain decimal only.\n"
     "- Output must be valid JSON. No prose, no markdown fences."
 )
@@ -64,10 +85,6 @@ def _build_user_prompt(rows: list[RawProduct]) -> str:
         for r in rows
     ]
     return json.dumps({"rows": payload}, ensure_ascii=False)
-import time
-from corpmind.observability.token_tracker import tracker
-
-from corpmind.utils.rate_limiter import rate_limited
 
 
 def _call_llm(client: Any, messages: list[dict]) -> str:
