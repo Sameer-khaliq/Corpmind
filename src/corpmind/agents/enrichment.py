@@ -18,7 +18,8 @@ from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 from langchain_groq import ChatGroq
 from pydantic import ValidationError
-
+import time
+from corpmind.observability.token_tracker import tracker
 from corpmind.config import settings
 from corpmind.schemas.enrichment import (
     EnrichmentResolution,
@@ -192,8 +193,7 @@ def fields_needing_enrichment(
     return targets
 
 
-import time
-from corpmind.observability.token_tracker import tracker
+
 
 
 def enrich_fields(product: NormalizedProduct, field_names: list[str]) -> list[FieldEnrichment]:
