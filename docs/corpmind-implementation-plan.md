@@ -527,7 +527,6 @@ Files: same file, review-queue view.
 Reuses: none.
 Done checkpoint: a full run's flagged items are visible *and actionable*; approving one updates the catalog export and logs the override.
 Stopping point: prefer as a unit with Day 19 — a review queue you can view but not act on isn't actually done.
-
 **Day 21 — Test feed + gold set + trap cases**
 Goal: build the deliberately messy, overlapping test feed from 2-3 combined/altered public catalogs (per the DoD), plant the four named trap cases explicitly, build the gold set the match-eval calibration and RAGAS harness need.
 Files: `data/sample_feeds/` (final), `eval/gold_set/{gold_items,trap_cases}.jsonl`.
