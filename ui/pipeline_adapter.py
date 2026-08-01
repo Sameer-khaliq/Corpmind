@@ -28,7 +28,25 @@ from corpmind.graph.build_graph import build_graph        # Days 14-16
 # i.e. takes the whole final BatchState and writes all three files at once.
 from corpmind.agents.report import generate_report as generate_audit_report
 from corpmind.schemas.audit import AuditLogEntry
+from corpmind.schemas.raw import RawProduct
 from corpmind.config import settings
+
+# Real Day 4-13 agents -- build_graph()'s kwargs are ALL optional and fall
+# back to nodes.py's smoke-test stubs if not passed. Without this wiring,
+# the pipeline silently ran on stubs the whole time (confirmed: the
+# "title Field required" crash was _default_extraction_fn's stub output,
+# which only copies raw_fields through and never actually extracts
+# title/category -- not a ConsistentProduct bug at all).
+from groq import Groq
+from corpmind.agents.extraction import extract_batch
+from corpmind.agents.matching import (
+    prepare_batch_index,
+    find_candidates_for_item,
+    resolve_batch,
+    write_new_products,  
+)
+from corpmind.agents.enrichment import enrich_product
+from corpmind.agents.evaluation import default_disambiguation_fn, default_judge_call_fn
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +60,15 @@ def ingest_uploaded_files(uploaded_files, supplier_ids):
                     on disk, since it does path.suffix / path.exists() /
                     path.read_bytes() checks).
     supplier_ids:   list of str, same length, one per file.
-    Returns: list[RawProduct], flattened across all uploaded feeds.
+    Returns: list[dict], flattened across all uploaded feeds.
+
+    ingest_supplier_feed returns RawProduct pydantic objects, but
+    schemas/state.py's own BatchState declares raw_rows: list[dict], and
+    downstream code (extraction_fn, nodes.py's "raw_row" in row checks)
+    treats each entry as a mapping -- `**row` / `row[...]` / `in row` all
+    require a real dict, and a bare RawProduct object fails all three
+    ("'RawProduct' object is not a mapping"). model_dump() each row here
+    so raw_rows matches the type BatchState actually declares.
 
     Each uploaded file is spooled to a NamedTemporaryFile with its
     original suffix preserved (ingest_supplier_feed dispatches on
@@ -58,7 +84,7 @@ def ingest_uploaded_files(uploaded_files, supplier_ids):
 
         try:
             rows = ingest_supplier_feed(tmp_path, supplier_id=supplier_id)
-            raw_rows.extend(rows)
+            raw_rows.extend(row.model_dump() for row in rows)
         finally:
             tmp_path.unlink(missing_ok=True)
 
@@ -162,6 +188,70 @@ def _build_consistent_product(item, catalog_id_override: str | None = None):
     return ConsistentProduct(**payload)
 
 
+def _make_extraction_fn():
+    """
+    nodes.py's extract_and_match_node calls extraction_fn(raw_row: dict)
+    ONCE PER ITEM, concurrently (capped by extraction_concurrency). The
+    real extract_batch(client, rows) takes a LIST of RawProduct and does
+    its own internal batching (N=8-10/call, one shared system-prompt).
+
+    Bridging these two contracts means calling extract_batch with a
+    single-row list per item -- this pays full system-prompt overhead
+    per item instead of amortizing it across a real batch, which is
+    LESS efficient than Day 4's intended batching. Flagged, not silently
+    "fixed" here: doing this properly means changing extract_and_match_node
+    to call extraction over the whole raw_rows list at once instead of
+    per-item, which is nodes.py's call shape to change, not this adapter's.
+    Fine for a UI smoke-test batch; revisit before a real load test.
+    """
+    client = Groq(api_key=settings.GROQ_API_KEY)
+
+    async def extraction_fn(raw_row: dict):
+        # raw_row is RawProduct.model_dump() (see ingest_uploaded_files),
+        # plus possibly a "_repair_note" key nodes.py adds on retry --
+        # not a RawProduct field, strip it before reconstructing.
+        clean = {k: v for k, v in raw_row.items() if k != "_repair_note"}
+        raw_product = RawProduct(**clean)
+        results = await asyncio.to_thread(extract_batch, client, [raw_product])
+        return results[0]
+
+    return extraction_fn
+
+
+def _build_graph():
+    """
+    Wires the real Day 4-13 agents into build_graph(), instead of leaving
+    every kwarg unset (which silently falls back to nodes.py's smoke-test
+    stubs -- confirmed root cause of the earlier "title Field required"
+    crash).
+
+    phase_a_fn / prepare_batch_index_fn / phase_b_fn / write_new_products_fn
+    are matching.py's real functions passed DIRECTLY -- nodes.py's own
+    "real mode" docstring confirms their call shapes match exactly
+    (phase_a_fn(normalized_product, batch_index), phase_b_fn(all_pairs,
+    normalized_products) -> dict[item_id, MatchResult)), so no adapter
+    needed for those.
+
+    disambiguation_fn is explicitly wired to evaluation.py's REAL
+    default_disambiguation_fn -- without this, nodes.py's own factory-level
+    default (_default_disambiguation_fn, a stub) silently overrides
+    evaluate_item's real default every time. judge_call_fn is passed
+    explicitly too, even though evaluate_item's own default already points
+    to the real default_judge_call_fn, just to remove any doubt about
+    which default nodes.py's factory functions apply.
+    """
+    return build_graph(
+        extraction_fn=_make_extraction_fn(),
+        prepare_batch_index_fn=prepare_batch_index,
+        phase_a_fn=find_candidates_for_item,
+        phase_b_fn=resolve_batch,
+        write_new_products_fn=write_new_products,
+        enrichment_fn=enrich_product,
+        judge_call_fn=default_judge_call_fn,
+        disambiguation_fn=default_disambiguation_fn,
+    ).compile()
+
+
 # ---------------------------------------------------------------------------
 # Pipeline execution with progress streaming -- ONE run, not two
 # ---------------------------------------------------------------------------
@@ -183,7 +273,7 @@ def run_pipeline_in_background(raw_rows, progress_q: queue.Queue):
             progress_q.put({"type": "error", "error": str(exc)})
 
     async def _run_async():
-        graph = build_graph().compile()  # build_graph() alone returns an uncompiled StateGraph
+        graph = _build_graph()
 
         initial_state = {
             "raw_rows": raw_rows,
