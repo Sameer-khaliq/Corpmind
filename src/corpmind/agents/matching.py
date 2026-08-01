@@ -17,6 +17,49 @@ HIGH_CUTOFF = getattr(settings, "MATCH_HIGH_CUTOFF", 0.90)
 LOW_CUTOFF = getattr(settings, "MATCH_LOW_CUTOFF", 0.60)
 TOP_K_CANDIDATES = 5
 
+# Minimum title-word overlap required, ON TOP OF dense embedding similarity,
+# before two NEW (never-seen-before) items are trusted as the same product.
+#
+# BUG (confirmed via a real run): three genuinely different handbags
+# (Leather Handbag / Canvas Tote / Suede Clutch, same brand+category, no
+# color/material/size/description -- extraction correctly left them null,
+# nothing to guess) all merged into one catalog_id. _product_text() for
+# all three collapsed to near-identical strings ("<Type> Roseline
+# handbags"), so cosine similarity cleared HIGH_CUTOFF purely off shared
+# brand+category boilerplate -- the clique-verification guard (below)
+# already stops HUB-based false merges (A-C, B-C both high but A-B never
+# compared), but it does nothing here because these three genuinely WERE
+# directly pairwise >0.90 similar to each other in embedding space. Dense
+# similarity alone isn't trustworthy when the real differentiating
+# signal (title) is a small fraction of a sparse product_text.
+#
+# Fix: require some real lexical overlap in the titles themselves, not
+# just overall dense similarity, before merging two NEW items. "Leather
+# Handbag" vs "Canvas Tote" vs "Suede Clutch" share zero title tokens ->
+# correctly split apart. A genuine near-duplicate like "Slim Fit Jeans"
+# vs "Slim-Fit Jeans (Blue)" still shares "slim"/"fit"/"jeans" -> still
+# merges. Precision-favoring per the NFR (merging distinct products is
+# worse than missing a duplicate) -- a real near-duplicate with a
+# completely reworded title would now fail to merge and get split into
+# two NEW_PRODUCT entries instead of MATCHED_EXISTING; that's the
+# accepted tradeoff, not silently working around it.
+MIN_TITLE_OVERLAP = 0.2
+
+
+def _title_tokens(p: NormalizedProduct) -> set[str]:
+    if not p.title:
+        return set()
+    return {t for t in p.title.lower().split() if len(t) > 2}
+
+
+def _title_overlap(a: NormalizedProduct, b: NormalizedProduct) -> float:
+    """Jaccard similarity of title tokens (words > 2 chars, to skip noise
+    like 'a'/'in'). 0.0 if either title is empty/unresolved."""
+    ta, tb = _title_tokens(a), _title_tokens(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
 @dataclass(frozen=True)
 class CandidatePair:
     item_id: str
@@ -106,6 +149,7 @@ def resolve_batch(
     low_cutoff: float = LOW_CUTOFF,
 ) -> dict[str, MatchResult]:
     new_item_ids = {str(p.item_id) for p in items}
+    by_id = {str(p.item_id): p for p in items}
 
     best_score: dict[str, float] = {i: float("-inf") for i in new_item_ids}
     for p in all_candidate_pairs:
@@ -185,6 +229,7 @@ def resolve_batch(
                     others = [o for o in new_members if o != m]
                     if others and all(
                         direct_new_new_score.get(frozenset((m, o)), float("-inf")) > high_cutoff
+                        and _title_overlap(by_id[m], by_id[o]) >= MIN_TITLE_OVERLAP
                         for o in others
                     ):
                         verified.append(m)
@@ -220,6 +265,7 @@ def resolve_batch(
                 others = [o for o in new_members if o != m]
                 if all(
                     direct_new_new_score.get(frozenset((m, o)), float("-inf")) > high_cutoff
+                    and _title_overlap(by_id[m], by_id[o]) >= MIN_TITLE_OVERLAP
                     for o in others
                 ):
                     verified_group.append(m)
