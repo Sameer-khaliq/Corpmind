@@ -2,6 +2,8 @@ from __future__ import annotations
 from typing import Callable
 from pydantic import BaseModel, Field, model_validator
 import logging
+import time
+from corpmind.observability.token_tracker import tracker
 # Strict internal package imports
 from corpmind.eval.ragas_harness import (  
     FaithfulnessJudgeFn,
@@ -109,8 +111,7 @@ def evaluate_enrichment_result(
 DisambiguationFn = Callable[[MatchResult], dict]
 
 
-import time
-from corpmind.observability.token_tracker import tracker
+
 
 def default_disambiguation_fn(match_result: MatchResult) -> dict:
     import json
