@@ -140,7 +140,7 @@ def test_enrich_field_captures_verbatim_grounding_snippet(monkeypatch):
 
     monkeypatch.setattr(enrichment, "ChatGroq", lambda **kwargs: FakeLLM())
 
-    result = enrichment.enrich_field(_product(material=None), "material")
+    result = enrichment.enrich_fields(_product(material=None), "material")
 
     assert result.resolution == EnrichmentResolution.FILLED_GROUNDED
     assert result.source_url == url
@@ -178,7 +178,7 @@ def test_enrich_field_respects_search_cap(monkeypatch):
 
     monkeypatch.setattr(enrichment, "ChatGroq", lambda **kwargs: FakeLLM())
 
-    result = enrichment.enrich_field(_product(material=None), "material")
+    result = enrichment.enrich_fields(_product(material=None), "material")
 
     assert calls["web_search"] == enrichment.MAX_SEARCHES
     assert result.resolution == EnrichmentResolution.LEFT_FLAGGED
@@ -203,7 +203,7 @@ def test_enrich_field_falls_back_to_left_flagged_on_broken_grounding_claim(monke
 
     monkeypatch.setattr(enrichment, "ChatGroq", lambda **kwargs: FakeLLM())
 
-    result = enrichment.enrich_field(_product(material=None), "material")
+    result = enrichment.enrich_fields(_product(material=None), "material")
 
     assert result.resolution == EnrichmentResolution.LEFT_FLAGGED
     assert result.source_url is None
