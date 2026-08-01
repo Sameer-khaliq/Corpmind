@@ -11,7 +11,8 @@ import re
 from typing import Callable, Literal
 
 from pydantic import BaseModel, Field
-
+import time
+from corpmind.observability.token_tracker import tracker
 try:
     from corpmind.config import settings  
     logger = logging.getLogger(__name__)
@@ -150,8 +151,7 @@ def _parse_judge_response(raw_text: str, expected_len: int) -> list[dict]:
         ]
 
 
-import time
-from corpmind.observability.token_tracker import tracker
+
 
 def default_judge_call_fn(batch: list[FieldFaithfulnessInput]) -> list[dict]:
     """
