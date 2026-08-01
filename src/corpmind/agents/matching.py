@@ -50,6 +50,20 @@ def prepare_batch_index(items: list[NormalizedProduct]) -> dict:
 
 
 def find_candidates_for_item(item: NormalizedProduct, batch_index: dict) -> list[CandidatePair]:
+    # 'other' is a catch-all for products the fixed taxonomy doesn't cover
+    # (belts, sarees, sunglasses, shapewear, etc — confirmed via a real
+    # debug run: these were previously force-mapped to 'shirts'/'tops',
+    # which is exactly what caused unrelated products to cluster together).
+    # Two 'other' items sharing that label carries NO signal they're
+    # actually similar — unlike a real category match, "other" just means
+    # "the taxonomy didn't have a bucket for this." So skip candidate
+    # search entirely for these; resolve_batch's existing no-candidates
+    # fallback routes them to NEW_PRODUCT (or AMBIGUOUS if best_score
+    # happens to clear low_cutoff from some other path) individually,
+    # never merged with each other purely because both said "other".
+    if item.category == "other":
+        return []
+
     text = _product_text(item)
     metadata_filter = {"category": item.category}
     candidates: list[CandidatePair] = []
