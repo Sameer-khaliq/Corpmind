@@ -43,17 +43,30 @@ class EvaluationRecord(BaseModel):
     catalog_id: str
     match_eval: MatchEvalScore
     field_evals: list[FieldEvalScore] = Field(default_factory=list)
+    extraction_warnings: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Passed through from NormalizedProduct.extraction_warnings. A "
+            "non-empty list means Extraction's own schema-repair reprompts "
+            "were exhausted (see extraction.py's _flagged_product fallback) "
+            "-- forces REJECT_TO_REVIEW in aggregate_verdict below regardless "
+            "of match/field scores, since a structurally-failed extraction "
+            "has nothing meaningful for match or faithfulness checks to "
+            "validate against in the first place."
+        ),
+    )
     overall_verdict: Verdict
     overall_reason: str
 
     @model_validator(mode="after")
     def _verdict_matches_subscores(self) -> "EvaluationRecord":
-        expected, _ = aggregate_verdict(self.match_eval, self.field_evals)
+        expected, _ = aggregate_verdict(self.match_eval, self.field_evals, self.extraction_warnings)
         if self.overall_verdict != expected:
             raise ValueError(
                 f"overall_verdict={self.overall_verdict!r} is inconsistent with "
                 f"sub-scores (match_eval={self.match_eval.verdict}, "
-                f"field_evals={[fe.verdict for fe in self.field_evals]}) — "
+                f"field_evals={[fe.verdict for fe in self.field_evals]}, "
+                f"extraction_warnings={self.extraction_warnings}) — "
                 f"expected {expected!r}."
             )
         return self
@@ -249,7 +262,31 @@ def evaluate_match(
     )
 
 
-def aggregate_verdict(match_eval: MatchEvalScore, field_evals: list[FieldEvalScore]) -> tuple[Verdict, str]:
+def aggregate_verdict(
+    match_eval: MatchEvalScore,
+    field_evals: list[FieldEvalScore],
+    extraction_warnings: list[str] | None = None,
+) -> tuple[Verdict, str]:
+    # BUG (confirmed via a real run): an item whose extraction genuinely
+    # failed (schema-repair reprompts exhausted -> extraction.py's
+    # _flagged_product() fallback, title="[UNRESOLVED — see
+    # extraction_warnings]") sailed through to ACCEPT. Nothing in the
+    # evaluation gate ever looked at extraction_warnings -- match_eval only
+    # checks RRF confidence (which doesn't care whether the title is real),
+    # and field_evals only exist for enrichment claims, which never ran here
+    # (NEW_PRODUCT skips Enrichment). So a structurally-failed extraction
+    # had NOTHING in the gate capable of catching it -- violates the NFR
+    # ("malformed input... flagged for review, never silently dropped or
+    # guessed"). Fixed by making a non-empty extraction_warnings list an
+    # automatic, unconditional REJECT_TO_REVIEW -- checked first, before
+    # either sub-score, since a failed extraction means match_eval and
+    # field_evals were computed against unreliable data in the first place.
+    if extraction_warnings:
+        return "REJECT_TO_REVIEW", (
+            "REJECT_TO_REVIEW — extraction reported unresolved warning(s), "
+            f"flagging regardless of match/field scores: {'; '.join(extraction_warnings)}"
+        )
+
     failing_fields = [fe for fe in field_evals if fe.verdict != "ACCEPT"]
     if match_eval.verdict == "ACCEPT" and not failing_fields:
         return "ACCEPT", "ACCEPT — match_eval and all field_evals passed."
@@ -272,6 +309,7 @@ def evaluate_item(
     disambiguation_fn: DisambiguationFn = default_disambiguation_fn,
     batch_size: int = 8,
     threshold: float | None = None,
+    extraction_warnings: list[str] | None = None,
 ) -> EvaluationRecord:
     match_eval = evaluate_match(match_result, low_cutoff, high_cutoff, disambiguation_fn)
 
@@ -279,12 +317,14 @@ def evaluate_item(
     if enrichment_result is not None:
         field_evals = evaluate_enrichment_result(enrichment_result, judge_call_fn, batch_size, threshold)
 
-    overall_verdict, overall_reason = aggregate_verdict(match_eval, field_evals)
+    extraction_warnings = extraction_warnings or []
+    overall_verdict, overall_reason = aggregate_verdict(match_eval, field_evals, extraction_warnings)
 
     return EvaluationRecord(
         catalog_id=catalog_id,
         match_eval=match_eval,
         field_evals=field_evals,
+        extraction_warnings=extraction_warnings,
         overall_verdict=overall_verdict,
         overall_reason=overall_reason,
     )
