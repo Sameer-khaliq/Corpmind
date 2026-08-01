@@ -1,10 +1,20 @@
 [
   {
-    "catalog_id": "CM-bde53e8162a7",
+    "catalog_id": "CM-b1c2784be9b0",
+    "sku": null,
+    "title": "KeepCart Women Tummy Control Shapewear High Waist Trainer Thigh Slimmer",
+    "brand": "KeepCart",
+    "category": "other",
+    "description": null,
+    "price": "397.00",
+    "attributes": {}
+  },
+  {
+    "catalog_id": "CM-9c66694fcf69",
     "sku": null,
     "title": "FLYNGO 2 Pair Nipple Covers Reusable Comfortable Invisible Adhesive Silicone Pasties for Women",
     "brand": "FLYNGO",
-    "category": "tops",
+    "category": "other",
     "description": null,
     "price": "275.00",
     "attributes": {
@@ -12,21 +22,21 @@
     }
   },
   {
-    "catalog_id": "CM-6dbf0bd94505",
+    "catalog_id": "CM-c23367ccf1a0",
     "sku": "B0B63RNRNT",
     "title": "GoSriKi Women's Woven Georgette Saree (BND-Multi GO_Multicolour)",
     "brand": "GoSriKi",
-    "category": "shirts",
+    "category": "other",
     "description": null,
     "price": "299.00",
     "attributes": {
       "color": "Multicolour",
-      "material": "Woven Georgette"
+      "material": "Georgette"
     }
   },
   {
-    "catalog_id": "CM-6dbf0bd94505",
-    "sku": null,
+    "catalog_id": "CM-65296258d285",
+    "sku": "B09SDY8DCT",
     "title": "Janasya Women's Green Poly Chiffon Self Design Flared Kurta",
     "brand": "Janasya",
     "category": "shirts",
@@ -35,31 +45,6 @@
     "attributes": {
       "color": "Green",
       "material": "Poly Chiffon"
-    }
-  },
-  {
-    "catalog_id": "CM-bde53e8162a7",
-    "sku": null,
-    "title": "SHOPPY VILLA WITH SV LOGO Women Camisole (Comi-Secret_Multicolour_Free Size)",
-    "brand": "SHOPPY VILLA",
-    "category": "tops",
-    "description": null,
-    "price": "279.00",
-    "attributes": {
-      "color": "Multicolour",
-      "size": "Free Size"
-    }
-  },
-  {
-    "catalog_id": "CM-6dbf0bd94505",
-    "sku": null,
-    "title": "Rangnavi Women Rayon Anarkali Embroidered Printed Kurta Pant and Dupatta Set",
-    "brand": "Rangnavi",
-    "category": "shirts",
-    "description": null,
-    "price": "845.00",
-    "attributes": {
-      "material": "Rayon"
     }
   }
 ]
