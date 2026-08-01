@@ -88,6 +88,7 @@ import asyncio
 import inspect
 import random
 import time
+import uuid
 from typing import Callable
 
 from pydantic import ValidationError
@@ -272,8 +273,20 @@ def _default_consistency_fn(item: ItemState):
 
     payload = dict(normalized)
 
-    catalog_id = None
-    if match_result is not None:
+    # CRASH FIX: an AMBIGUOUS item that disambiguation resolves to ACCEPT
+    # still has match_result.catalog_id == None -- MatchResult's own
+    # validator forbids setting it while decision == AMBIGUOUS, so there is
+    # no real catalog_id anywhere on match_result for this case, only the
+    # traceable "ambiguous_pending_*" sentinel stashed elsewhere. Without
+    # this override, payload never gets a catalog_id at all and
+    # ConsistentProduct rejects it as a required field -- confirmed real
+    # risk once real disambiguation was wired in (previously unreachable
+    # with the stub). The caller (evaluate_only_node) mints a real
+    # catalog_id and stashes it here before calling this function; normal
+    # (non-ambiguous) items simply won't have this key set, falling back
+    # to match_result.catalog_id as before.
+    catalog_id = item.get("resolved_catalog_id")
+    if catalog_id is None:
         catalog_id = getattr(match_result, "catalog_id", None)
         if catalog_id is None and isinstance(match_result, dict):
             catalog_id = match_result.get("catalog_id")
@@ -522,6 +535,18 @@ def make_enrich_and_evaluate_node(
             kwargs["judge_call_fn"] = judge_call_fn
         if disambiguation_fn is not None:
             kwargs["disambiguation_fn"] = disambiguation_fn
+        # FIX: extraction_warnings was never passed to evaluate_item, so a
+        # structurally-failed extraction (schema-repair exhausted) had
+        # nothing in the gate capable of catching it — see aggregate_verdict
+        # in evaluation.py for the full fix. `normalized` may be a
+        # NormalizedProduct object or (fallback) a dict — handle both.
+        extraction_warnings = (
+            getattr(normalized, "extraction_warnings", None)
+            if not isinstance(normalized, dict)
+            else normalized.get("extraction_warnings")
+        )
+        if extraction_warnings:
+            kwargs["extraction_warnings"] = extraction_warnings
 
         record = await _call_maybe_async(
             evaluate_item,
@@ -639,6 +664,7 @@ def make_evaluate_only_node(
             return {"flagged_items": [item], "audit_log": [err_audit]}
 
         catalog_id = match_result.catalog_id
+        normalized = state.get("normalized_product")
 
         # CRASH FIX: MatchResult's own validator requires catalog_id to be
         # None specifically when decision == AMBIGUOUS — this node handles
@@ -651,7 +677,6 @@ def make_evaluate_only_node(
         # instead of either crashing or silently dropping the item.
         audit_catalog_id = catalog_id
         if audit_catalog_id is None:
-            normalized = state.get("normalized_product")
             fallback_id = (
                 getattr(normalized, "item_id", None) or getattr(normalized, "source_row_index", None)
                 if normalized is not None
@@ -662,6 +687,19 @@ def make_evaluate_only_node(
         kwargs = {}
         if disambiguation_fn is not None:
             kwargs["disambiguation_fn"] = disambiguation_fn
+        # FIX: this is the exact path the "[UNRESOLVED — see
+        # extraction_warnings]" item went through and got silently
+        # ACCEPTed — NEW_PRODUCT/AMBIGUOUS items skip Enrichment entirely,
+        # so extraction_warnings was the ONLY signal available that
+        # something was structurally wrong, and it was never read. See
+        # aggregate_verdict in evaluation.py for the enforcement side.
+        extraction_warnings = (
+            getattr(normalized, "extraction_warnings", None)
+            if not isinstance(normalized, dict)
+            else (normalized or {}).get("extraction_warnings")
+        )
+        if extraction_warnings:
+            kwargs["extraction_warnings"] = extraction_warnings
 
         record = await _call_maybe_async(
             evaluate_item,
@@ -681,8 +719,20 @@ def make_evaluate_only_node(
         # not just accepted_items/flagged_items.
         from corpmind.schemas.audit import AuditLogEntry
 
+        resolved_catalog_id = audit_catalog_id
+        if record.overall_verdict == "ACCEPT" and catalog_id is None:
+            # CRASH FIX: this is the AMBIGUOUS-resolved-to-ACCEPT case (see
+            # _default_consistency_fn's docstring above for the full why).
+            # Mint a real catalog_id now and use THE SAME id for both the
+            # accepted ConsistentProduct and this audit entry (not the
+            # "ambiguous_pending_*" sentinel) — report.py's accepted-item
+            # join is by product.catalog_id, so the audit entry must match
+            # that exactly, not the pre-resolution sentinel.
+            resolved_catalog_id = f"CM-{uuid.uuid4().hex[:12]}"
+            item = {**item, "resolved_catalog_id": resolved_catalog_id}
+
         audit_entry = AuditLogEntry(
-            catalog_id=audit_catalog_id,
+            catalog_id=resolved_catalog_id,
             agent="evaluate_only_node",
             action="accepted" if record.overall_verdict == "ACCEPT" else "flagged_for_review",
             reason=record.overall_reason,
