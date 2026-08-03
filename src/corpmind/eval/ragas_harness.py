@@ -155,40 +155,37 @@ def _parse_judge_response(raw_text: str, expected_len: int) -> list[dict]:
 
 def default_judge_call_fn(batch: list[FieldFaithfulnessInput]) -> list[dict]:
     """
-    Calls Gemini 2.5-flash to evaluate the batch of claims blindly.
+    Calls Groq llama-3.3-70b-versatile to evaluate the batch of claims blindly.
     """
     prompt = _build_judge_prompt(batch)
 
-    from google import genai
-    from google.genai import types
-    api_key = getattr(settings, "GOOGLE_API_KEY", None)
-    client = genai.Client(api_key=api_key)
+    from groq import Groq
+    api_key = getattr(settings, "GROQ_API_KEY", None)
+    client = Groq(api_key=api_key)
 
     start_time = time.monotonic()
     try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=0.0,
-            ),
+        response = client.chat.completions.create(
+            model='llama-3.3-70b-versatile',
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.0,
         )
         latency_s = time.monotonic() - start_time
 
-        usage = getattr(response, "usage_metadata", None)
+        usage = getattr(response, "usage", None)
         if usage:
             tracker.record(
                 stage="evaluation_judge",
-                prompt_tokens=getattr(usage, "prompt_token_count", 0) or 0,
-                completion_tokens=getattr(usage, "candidates_token_count", 0) or 0,
+                prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
                 latency_s=latency_s,
                 batch_size=len(batch),
             )
 
-        raw_text = response.text or "[]"
+        raw_text = response.choices[0].message.content or "[]"
     except Exception as e:
-        logger.error(f"Gemini judge API call failed: {e}")
+        logger.error(f"Groq judge API call failed: {e}")
         raw_text = "[]"
     return _parse_judge_response(raw_text, len(batch))
 
