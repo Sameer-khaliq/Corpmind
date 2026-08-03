@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     judge_fallback_model: str = "llama-3.3-70b-versatile"
     ENRICHMENT_CONFIDENCE_THRESHOLD: float = 0.6   
     FAITHFULNESS_THRESHOLD: float = 0.85 
-    max_concurrent_llm_calls: int = 10            
+    max_concurrent_llm_calls: int = 5            
     # --- Thresholds (§1 of the implementation plan) --------------------
     faithfulness_threshold: float = 0.85
     match_confidence_high: float = Field(
