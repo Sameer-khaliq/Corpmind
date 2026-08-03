@@ -703,7 +703,19 @@ def make_evaluate_only_node(
 
         record = await _call_maybe_async(
             evaluate_item,
-            catalog_id=catalog_id,
+            # CRASH FIX: EvaluationRecord.catalog_id is a required `str`
+            # (not Optional), but match_result.catalog_id is always None
+            # for AMBIGUOUS by MatchResult's own validator -- passing the
+            # raw `catalog_id` here crashes EvaluationRecord construction
+            # for EVERY AMBIGUOUS item, before disambiguation even runs.
+            # audit_catalog_id (computed above) is always a real string --
+            # either the real catalog_id, or the traceable
+            # "ambiguous_pending_*" sentinel -- so use that instead. This
+            # only affects EvaluationRecord's own catalog_id field; nothing
+            # downstream joins on it (report.py joins accepted items by
+            # ConsistentProduct.catalog_id and flagged items by
+            # item["audit_catalog_id"] directly, not evaluation_record.catalog_id).
+            catalog_id=audit_catalog_id,
             match_result=match_result,
             enrichment_result=None,
             low_cutoff=low_cutoff,
