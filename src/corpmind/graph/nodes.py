@@ -326,7 +326,7 @@ def make_extract_and_match_node(
     phase_b_fn=_default_phase_b_fn,
     prepare_batch_index_fn=None,
     write_new_products_fn=None,
-    extraction_concurrency: int = 10,
+    extraction_concurrency: int = 5,
 ) -> Callable:
     """
     ONE node covering extraction -> Phase A -> Phase B for the WHOLE batch.
