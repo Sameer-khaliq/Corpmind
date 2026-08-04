@@ -1,6 +1,6 @@
 """Ingestion node: reads a raw supplier feed (CSV or XLSX) into RawProduct
 objects, tolerating messy real-world feeds — missing values, non-UTF-8
-encodings, an entirely empty column — without crashing, and surfacing what
+encodings, an entirely empty column  without crashing, and surfacing what
 was tolerated via each row's `warnings` field.
 
 Deliberately does zero schema mapping. Supplier A and Supplier B share no
