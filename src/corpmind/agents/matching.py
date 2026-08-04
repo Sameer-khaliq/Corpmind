@@ -17,7 +17,7 @@ HIGH_CUTOFF = getattr(settings, "MATCH_HIGH_CUTOFF", 0.90)
 LOW_CUTOFF = getattr(settings, "MATCH_LOW_CUTOFF", 0.60)
 TOP_K_CANDIDATES = 5
 
-# Minimum title-word overlap required, ON TOP OF dense embedding similarity,
+# Minimum title word overlap required, ON TOP OF dense embedding similarity,
 # before two NEW (never-seen-before) items are trusted as the same product.
 #
 # BUG (confirmed via a real run): three genuinely different handbags
