@@ -102,19 +102,11 @@ from corpmind.graph.tracing_config import (
     traceable,
 )
 
-try:
-    import logging
+import logging
 
-    logger = logging.getLogger(__name__)
-except ModuleNotFoundError:
-    import logging
+from corpmind.config import settings
 
-    logger = logging.getLogger(__name__)
-
-    class _StubSettings:
-        pass
-
-    settings = _StubSettings()
+logger = logging.getLogger(__name__)
 
 # Real schema — confirmed from your actual schemas/state.py and
 # schemas/matching.py uploads. No fallback mirror this time; if this import
