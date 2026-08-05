@@ -16,25 +16,10 @@ ROUTING DECISION (unchanged from before, still locked in):
 
 from __future__ import annotations
 
-from typing import Any
+from langgraph.types import Send
 
-try:
-    from langgraph.types import Send  # type: ignore
-except ModuleNotFoundError:
-
-    class Send:  # sandbox-only stand-in
-        def __init__(self, node: str, arg: Any):
-            self.node = node
-            self.arg = arg
-
-        def __repr__(self) -> str:
-            return f"Send(node={self.node!r})"
-
-try:
-    from corpmind.schemas.state import BatchState  # type: ignore
-    from corpmind.schemas.matching import MatchDecision  # type: ignore
-except ModuleNotFoundError:
-    from graph.nodes import BatchState, MatchDecision  # type: ignore
+from corpmind.schemas.state import BatchState
+from corpmind.schemas.matching import MatchDecision
 
 
 def route_after_matching(state: BatchState) -> list[Send]:
@@ -54,23 +39,42 @@ def route_after_matching(state: BatchState) -> list[Send]:
 
 
 if __name__ == "__main__":
-    class _M:
-        def __init__(self, d):
-            self.decision = d
+    import asyncio
 
-    single_item_input: BatchState = {  # type: ignore[typeddict-item]
-    "batch_id": "smoke-test-batch",
-    "raw_rows": [
-        {"raw_row": {"extraction_id": "row-0", "title": "Men's Cotton Crew Neck T-Shirt",
-                      "brand": "ExampleBrand", "color": "navy blue", "price": "19.99"}}
-    ],
-    # match_result ab yahan hand-craft nahi karna — extract_and_match_node
-    # khud isse compute karega (stub phase_b_fn: i=0 -> NEW_PRODUCT by design),
-    # jo yeh test asal mein chahta tha. Real extraction/matching path se
-    # guzarna, bypass karna nahi — yehi "end-to-end through real LangGraph
-    # engine" ka matlab hai.
-    }
-    routed = route_after_matching(single_item_input)
-    targets = [s.node for s in routed]
-    assert targets == ["evaluate_only", "enrich_and_evaluate", "evaluate_only"], targets
-    print("[edges] PASS — route_after_matching dispatches correctly:", targets)
+    from corpmind.graph.nodes import make_extract_and_match_node
+
+    async def _smoke_test() -> None:
+        # Real flow: seed raw_rows, run extract_and_match_node (stub fns) to
+        # actually populate `items` with computed match_results, THEN route —
+        # bypassing that node (as the previous version of this test did, by
+        # hand-crafting `items` directly) meant route_after_matching read an
+        # `items` list that was never really produced by the node it exists
+        # to route after.
+        #
+        # 3 rows against _default_phase_b_fn's stub rule (i%3==2 ->
+        # MATCHED_EXISTING, else NEW_PRODUCT for i<4) deterministically
+        # gives: row 0 -> NEW_PRODUCT, row 1 -> NEW_PRODUCT, row 2 -> MATCHED_EXISTING.
+        raw_rows = [
+            {
+                "raw_row": {
+                    "extraction_id": f"row-{i}",
+                    "title": "Men's Cotton Crew Neck T-Shirt",
+                    "brand": "ExampleBrand",
+                    "color": "navy blue",
+                    "price": "19.99",
+                }
+            }
+            for i in range(3)
+        ]
+        state: BatchState = {"batch_id": "smoke-test-batch", "raw_rows": raw_rows}  # type: ignore[typeddict-item]
+
+        extract_and_match_node = make_extract_and_match_node()
+        node_updates = await extract_and_match_node(state)
+        state = {**state, **node_updates}
+
+        routed = route_after_matching(state)
+        targets = [s.node for s in routed]
+        assert targets == ["evaluate_only", "evaluate_only", "enrich_and_evaluate"], targets
+        print("[edges] PASS — route_after_matching dispatches correctly (after a real extract_and_match_node run):", targets)
+
+    asyncio.run(_smoke_test())
