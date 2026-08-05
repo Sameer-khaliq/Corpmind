@@ -49,32 +49,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Literal
 
-try:
-    from corpmind.schemas.audit import AuditLogEntry
-    from corpmind.schemas.consistent import ConsistentProduct
-except ModuleNotFoundError:
-    # Sandbox-only fallback so this file is standalone-testable without the
-    # full corpmind package on the path. Real machine imports above win.
-    from pydantic import BaseModel
-
-    class AuditLogEntry(BaseModel):  # type: ignore[no-redef]
-        catalog_id: str
-        agent: str
-        action: str
-        reason: str
-        audit_tag: str | None = None
-
-    class ConsistentProduct(BaseModel):  # type: ignore[no-redef]
-        catalog_id: str
-        sku: str | None = None
-        title: str
-        brand: str | None = None
-        category: str
-        description: str | None = None
-        price: object = None
-        attributes: dict = {}
-
-    ItemState = dict 
+from corpmind.schemas.audit import AuditLogEntry
+from corpmind.schemas.consistent import ConsistentProduct
 
 
 def _index_audit_log(audit_log: list[AuditLogEntry]) -> dict[str, list[AuditLogEntry]]:
