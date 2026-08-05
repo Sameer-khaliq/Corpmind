@@ -32,15 +32,32 @@ class Settings(BaseSettings):
     VECTOR_STORE_COLLECTION: str = "catalog_products"
     MATCH_HIGH_CUTOFF: float = 0.020
     MATCH_LOW_CUTOFF: float = 0.008
-    # --- Model routing (per role, not hardcoded at call sites) --------
+    # --- Model routing (per role, not hardcoded at call sites) ---------
+    # Deliberately spread across 4 distinct physical Groq models so no two
+    # roles share a rate-limit bucket (see rate_limiter.py's module
+    # docstring on why that matters) — this is what actually cuts latency,
+    # not just picking "a fast model". gemini-2.5-flash dropped from
+    # judge_model: its free-tier RPM=15 was the tightest ceiling of any
+    # model here and caused avoidable 429/backoff latency; kept in
+    # rate_limits.yaml in case a role needs it again later, but nothing
+    # currently routes to it.
     extraction_model: str = "llama-3.1-8b-instant"
     embeddings_model: str = "gemini-embedding-001"
     escalation_model: str = "llama-3.3-70b-versatile"
-    judge_model: str = "gemini-2.5-flash"
-    judge_fallback_model: str = "llama-3.3-70b-versatile"
-    ENRICHMENT_CONFIDENCE_THRESHOLD: float = 0.6   
-    FAITHFULNESS_THRESHOLD: float = 0.85 
-    max_concurrent_llm_calls: int = 5            
+    judge_model: str = "openai/gpt-oss-120b"
+    judge_fallback_model: str = "openai/gpt-oss-20b"
+    # Enrichment's ReAct loop shares judge_fallback_model's bucket
+    # (openai/gpt-oss-20b) rather than extraction_model's — extraction runs
+    # once per row and would otherwise contend with enrichment's per-item
+    # search loop for the same bucket, adding avoidable latency. Sharing
+    # with judge_fallback is low-risk since that path only fires when the
+    # primary judge errors. Revisit once nodes.py confirms how often
+    # escalation_model actually gets called — if it's low-traffic too, it
+    # may be a better pairing.
+    enrichment_model: str = "openai/gpt-oss-20b"
+    ENRICHMENT_CONFIDENCE_THRESHOLD: float = 0.6
+    FAITHFULNESS_THRESHOLD: float = 0.85
+    max_concurrent_llm_calls: int = 5
     # --- Thresholds (§1 of the implementation plan) --------------------
     faithfulness_threshold: float = 0.85
     match_confidence_high: float = Field(
@@ -66,7 +83,6 @@ class Settings(BaseSettings):
     @field_validator("GROQ_API_KEY", "GOOGLE_API_KEY", "TAVILY_API_KEY")
     @classmethod
     def check_trailing_whitespace(cls, v: str) -> str:
-        
         if v != v.strip():
             raise ValueError(
                 "API key contains leading or trailing whitespace! Please clean your .env file."
