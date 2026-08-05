@@ -1,9 +1,21 @@
-# tests/integration/test_pipeline_e2e.py
 import pytest
+from pathlib import Path
 from corpmind.utils.batch_runner import run_batch
 from corpmind.config import settings
+from corpmind.agents.report import (
+        generate_change_report, generate_catalog_export,
+    )
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+GOLDSET_PATH = DATA_DIR / "gold_set" / "expected_outcomes.csv"
 
-@pytest.mark.integration
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not GOLDSET_PATH.exists(),
+        reason="Gold-set data files not available in CI environment"
+    )
+]
+
 async def test_full_pipeline_shape(real_graph, gold_set_rows):
     """
     Small batch (10-15 rows from the messy feed) through the REAL graph.
@@ -33,8 +45,6 @@ async def test_full_pipeline_shape(real_graph, gold_set_rows):
     assert flagged_ids.issubset(audit_ids)
 
     # 4. Report generation doesn't error on real output
-    from corpmind.agents.report import (
-        generate_change_report, generate_catalog_export,
-    )
+    
     generate_change_report(accepted, flagged, audit_log)
     generate_catalog_export(accepted)

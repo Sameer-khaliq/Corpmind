@@ -1,19 +1,3 @@
-"""
-tests/integration/test_trap_cases_smoke.py
-
-Quick logic-validation subset of test_trap_cases.py -- handbags category
-only (~50 rows total instead of 431), runs in a few minutes instead of
-1.5-2 hours. NOT a replacement for the full gold-set suite: only covers 3
-of the 15 near-duplicate-match trap cases and 1 of the 5
-distinct-products-dont-merge cases (the only ones that happen to be
-handbags). Use this to confirm the pipeline + test harness logic actually
-works end-to-end before committing to the full run in test_trap_cases.py.
-
-Reuses test_trap_cases.py's plumbing (extraction_fn, graph wiring, vector
-store reset, title lookup) rather than duplicating it -- only the dataset
-scope and assertions differ.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -25,6 +9,7 @@ import pytest
 
 from test_trap_cases import (
     RAW_DIR,
+    GOLDSET_PATH,
     SUPPLIER_B_FILE,
     _build_graph,
     _find_by_title,
@@ -35,24 +20,26 @@ from test_trap_cases import (
 )
 from corpmind.config import settings
 
+# Module-level skipif guard for CI/CD
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not GOLDSET_PATH.exists(),
+        reason="Gold-set data files not available in CI environment"
+    )
+]
+
 HANDBAGS_A_FILE = "handbags_clutches_sample.csv"
 
-# The only planted trap cases that happen to be handbags -- see
-# expected_outcomes.csv's matched_row_ref / category columns.
-EXPECTED_MATCHES = {  # B row_ref -> A row_ref it should resolve onto
+EXPECTED_MATCHES = {
     "B_INJECTED_013": "A_BAG_006",
     "B_INJECTED_014": "A_BAG_016",
     "B_INJECTED_015": "A_BAG_026",
 }
-EXPECTED_DISTINCT = "B_INJECTED_018"  # should NOT merge with anything
+EXPECTED_DISTINCT = "B_INJECTED_018"
 
 
 def _write_handbags_only_feed() -> Path:
-    """Filters combined_fashion_sample.csv down to category=='handbags'
-    rows only, preserving the header, so ingest_supplier_feed can read it
-    as a normal file. Includes all organic handbags rows plus the 4
-    planted trap rows above -- not an artificially tiny file, just scoped
-    to one category."""
     src = RAW_DIR / SUPPLIER_B_FILE
     with src.open(encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -93,10 +80,7 @@ def test_smoke_near_duplicate_matches(smoke_stage_a, smoke_stage_b):
     ids_a = {p.catalog_id for p in smoke_stage_a["accepted_items"]}
     ids_b = {p.catalog_id for p in smoke_stage_b["accepted_items"]}
     shared = ids_a & ids_b
-    assert len(shared) == len(EXPECTED_MATCHES), (
-        f"expected {len(EXPECTED_MATCHES)} handbags duplicates to resolve onto "
-        f"Supplier A's existing catalog, got {len(shared)}"
-    )
+    assert len(shared) == len(EXPECTED_MATCHES)
 
 
 def test_smoke_distinct_products_dont_merge(smoke_stage_a, smoke_stage_b):
@@ -105,6 +89,4 @@ def test_smoke_distinct_products_dont_merge(smoke_stage_a, smoke_stage_b):
     assert hits, f"{title!r} not found in accepted_items"
 
     ids_a = {p.catalog_id for p in smoke_stage_a["accepted_items"]}
-    assert hits[0].catalog_id not in ids_a, (
-        f"{title!r} incorrectly matched an existing Supplier A product"
-    )
+    assert hits[0].catalog_id not in ids_a
