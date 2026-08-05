@@ -38,3 +38,13 @@ class EvaluationRecord(BaseModel):
         if match_score is not None:
             all_verdicts.append(match_score.verdict)
         return "accept" if all_verdicts and all(v == "accept" for v in all_verdicts) else "review"
+
+
+
+
+
+
+
+#ui
+# src/corpmind/agents/*.py (6 files) — sabse critical, business logic yahin hai
+# src/corpmind/graph/*.py (4 files) — nodes, edges, build_graph, tracing_config
