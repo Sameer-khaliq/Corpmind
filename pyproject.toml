@@ -31,3 +31,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "ruff>=0.15.21",
 ]
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests needing real API keys/data (deselect with '-m \"not integration\"')",
+]
