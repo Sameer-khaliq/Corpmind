@@ -5,13 +5,16 @@ CorpMind — Token-bucket rate limiter (Day 16)
 =================================================
 
 One token-bucket PAIR (requests + tokens) per physical MODEL — not per
-role/config-key. This distinction matters: two roles can resolve to the
-same underlying model (escalation_model and judge_fallback_model both
-default to llama-3.3-70b-versatile in config.py), and Groq/Google meter
-RPM/TPM per model, not per role. Bucketing by role would silently double
-your effective on-paper budget while the provider still enforces one real
-ceiling server-side — you'd only find out at 429 time. get_model_limiter()
-below resolves and caches by MODEL NAME, so both roles share one bucket.
+role/config-key. This distinction matters: IF two roles ever resolved to
+the same underlying model, Groq/Google still meter RPM/TPM per model, not
+per role — bucketing by role would silently double your effective
+on-paper budget while the provider still enforces one real ceiling
+server-side, and you'd only find out at 429 time. get_model_limiter()
+below resolves and caches by MODEL NAME, guarding against exactly that.
+(Current routing in config.py deliberately spreads extraction/escalation/
+judge/judge_fallback across four distinct physical models — see that
+file's comments — precisely so none of them contend for the same bucket
+and add serialized latency to each other.)
 
 Limits are read from settings.rate_limits_path (config/rate_limits.yaml),
 never hardcoded — per §1.3's Gemini caveat: Google's free-tier numbers are
@@ -21,16 +24,23 @@ aistudio.google.com/rate-limit, checked on the day you run this for real —
 not trusted from the YAML's placeholder or from me.
 
 WIRING / VERIFICATION YOU MUST DO:
-  1. config/rate_limits.yaml ships alongside this file with real Groq
-     numbers and PLACEHOLDER zeros for both Gemini models. A zero-capacity
-     bucket raises ValueError the instant that model is first requested
-     (see TokenBucket.__init__) — loud and immediate, not a silent hang —
-     but you still have to go fill in the real numbers before Gemini calls
-     can go through rate_limited().
-  2. This needs PyYAML. It is NOT currently in your pyproject.toml — given
-     the packages-installed-without-`uv add`-silently-break-Docker history
-     you already have, don't assume a transitive install covers it:
-     `uv add pyyaml`.
+  1. config/rate_limits.yaml ships alongside this file with real numbers
+     for every model currently routed to in config.py (four Groq models
+     used across extraction/escalation/judge/judge_fallback, plus
+     gemini-embeddings-001 for embeddings). gemini-2.5-flash is
+     deliberately NOT used for judge_model anymore — its free-tier RPM
+     (15) was the tightest ceiling of any model in the routing table and
+     caused avoidable throttling; it stays in the YAML only in case a role
+     ever needs it again, not because anything currently calls it. A
+     zero-capacity bucket raises ValueError the instant that model is
+     first requested (see TokenBucket.__init__) — loud and immediate, not
+     a silent hang — so if you ever DO add a new role pointed at a model
+     with placeholder/zero numbers here, you'll know immediately, not
+     mid-batch.
+  2. This needs PyYAML — added to pyproject.toml as a hard dependency
+     (`uv add pyyaml`); the import at the top of this file is no longer
+     guarded, so a missing install now fails loudly at process start, not
+     silently mid-batch.
   3. rate_limited() below is the wrapper — I don't have nodes.py's real
      call sites (the file uploaded under that name contained the §1.3 text,
      not code, so I never saw your actual node implementations). Apply the
@@ -57,33 +67,10 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+import yaml
 from pydantic import BaseModel, Field
 
-try:
-    import yaml  # type: ignore
-
-    _HAS_YAML = True
-except ModuleNotFoundError:
-    _HAS_YAML = False
-
-try:
-    from corpmind.config import settings  # type: ignore
-
-    _HAS_REAL_SETTINGS = True
-except ModuleNotFoundError:
-    _HAS_REAL_SETTINGS = False
-
-    class _StubSettings:
-        rate_limits_path = Path("config/rate_limits.yaml")
-        max_concurrent_llm_calls = 10
-        extraction_model = "llama-3.1-8b-instant"
-        escalation_model = "llama-3.3-70b-versatile"
-        judge_model = "gemini-2.5-flash"
-        judge_fallback_model = "llama-3.3-70b-versatile"
-        embeddings_model = "gemini-embeddings-001"
-        tavily_monthly_credit_ceiling = 1000
-
-    settings = _StubSettings()  # type: ignore
+from corpmind.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -118,8 +105,6 @@ def load_rate_limits(path: Path | None = None) -> dict[str, ModelLimits]:
     the file is missing, or an entry is malformed."""
     resolved_path = Path(path) if path is not None else Path(getattr(settings, "rate_limits_path", "config/rate_limits.yaml"))
 
-    if not _HAS_YAML:
-        raise RateLimitConfigError("PyYAML isn't installed. Run `uv add pyyaml` — it's not in pyproject.toml today.")
     if not resolved_path.exists():
         raise RateLimitConfigError(
             f"{resolved_path} not found. rate_limiter.py refuses to guess your account's real RPM/TPM "
@@ -385,17 +370,16 @@ if __name__ == "__main__":
         except ValueError:
             print("[rate_limiter] PASS — zero-capacity bucket (unfilled Gemini placeholder) fails loud, not silent")
 
-        _reset_registry_for_testing(
-            {
-                "llama-3.3-70b-versatile": ModelLimits(rpm=30, tpm=12000),
-                "llama-3.1-8b-instant": ModelLimits(rpm=30, tpm=6000),
-            }
-        )
-        assert settings.escalation_model == settings.judge_fallback_model == "llama-3.3-70b-versatile"
-        escalation_limiter = get_model_limiter(settings.escalation_model)
-        judge_fallback_limiter = get_model_limiter(settings.judge_fallback_model)
-        assert escalation_limiter is judge_fallback_limiter
-        print("[rate_limiter] PASS — roles sharing a physical model share one token bucket (no accidental 2x budget)")
+        # Synthetic two-role scenario (deliberately NOT read from live settings —
+        # current routing spreads every role across a distinct physical model
+        # specifically to avoid bucket contention; see config.py). This checks
+        # the underlying guarantee directly: IF two roles ever did resolve to
+        # the same model name, they'd share one bucket, not silently double budget.
+        _reset_registry_for_testing({"llama-3.3-70b-versatile": ModelLimits(rpm=30, tpm=12000)})
+        limiter_a = get_model_limiter("llama-3.3-70b-versatile")
+        limiter_b = get_model_limiter("llama-3.3-70b-versatile")
+        assert limiter_a is limiter_b
+        print("[rate_limiter] PASS — two roles resolving to the same physical model share one token bucket (no accidental 2x budget)")
 
         _reset_registry_for_testing({"llama-3.1-8b-instant": ModelLimits(rpm=30, tpm=6000)})
 
@@ -415,7 +399,6 @@ if __name__ == "__main__":
             assert "ceiling violated" in str(e)
             print("[rate_limiter] PASS — assert_rate_not_exceeded correctly detects a real violation (not just absence-of-error)")
 
-        print(f"\nsettings source: {'real corpmind.config' if _HAS_REAL_SETTINGS else 'stub (corpmind not importable in this environment)'}")
         print("[rate_limiter] ALL CHECKS PASSED")
 
     asyncio.run(_self_test())
