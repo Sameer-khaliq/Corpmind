@@ -55,40 +55,20 @@ WIRING / VERIFICATION YOU MUST DO:
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 
+from corpmind.config import settings
 from corpmind.graph.build_graph import build_graph
 from corpmind.graph.nodes import generate_report
+from corpmind.utils.rate_limiter import (
+    ModelLimits,
+    _reset_registry_for_testing,
+    assert_rate_not_exceeded,
+    rate_limited,
+)
 
-try:
-    from corpmind.config import settings  # type: ignore
-    import logging  # type: ignore
-
-    logger = logging.getLogger(__name__)
-except ModuleNotFoundError:
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    class _StubSettings:
-        max_concurrent_llm_calls = 10
-
-    settings = _StubSettings()  # type: ignore
-
-try:
-    from corpmind.utils.rate_limiter import (  # type: ignore
-        ModelLimits,
-        _reset_registry_for_testing,
-        assert_rate_not_exceeded,
-        rate_limited,
-    )
-except ModuleNotFoundError:
-    from rate_limiter import (  # type: ignore  (sandbox fallback — same dir)
-        ModelLimits,
-        _reset_registry_for_testing,
-        assert_rate_not_exceeded,
-        rate_limited,
-    )
+logger = logging.getLogger(__name__)
 
 
 def _default_max_concurrency() -> int:
