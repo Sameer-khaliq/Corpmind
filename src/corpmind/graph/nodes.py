@@ -105,66 +105,16 @@ from corpmind.graph.tracing_config import (
 import logging
 
 from corpmind.config import settings
-
-logger = logging.getLogger(__name__)
-
-# Real schema — confirmed from your actual schemas/state.py and
-# schemas/matching.py uploads. No fallback mirror this time; if this import
-# fails, that's a real problem to surface, not paper over with a guess.
-try:
-    from corpmind.schemas.state import BatchState, ItemState  # type: ignore
-    from corpmind.schemas.matching import MatchDecision, MatchResult  # type: ignore
-except ModuleNotFoundError:
-    # Sandbox-only fallback (this exact shape, copied verbatim from your
-    # uploads) so this file is still standalone-testable here.
-    import operator
-    from enum import Enum
-    from typing import Annotated, TypedDict
-
-    from pydantic import BaseModel, Field, model_validator
-
-    class MatchDecision(str, Enum):
-        NEW_PRODUCT = "NEW_PRODUCT"
-        MATCHED_EXISTING = "MATCHED_EXISTING"
-        AMBIGUOUS = "AMBIGUOUS"
-
-    class MatchResult(BaseModel):
-        catalog_id: str | None = Field(default=None)
-        rrf_score: float
-        decision: MatchDecision
-
-        @model_validator(mode="after")
-        def catalog_id_consistency(self) -> "MatchResult":
-            needs_id = self.decision in (MatchDecision.MATCHED_EXISTING, MatchDecision.NEW_PRODUCT)
-            if needs_id and self.catalog_id is None:
-                raise ValueError(f"decision is {self.decision} but catalog_id is not set")
-            if not needs_id and self.catalog_id is not None:
-                raise ValueError(f"decision is {self.decision} but catalog_id is set")
-            return self
-
-    class ItemState(TypedDict, total=False):
-        raw_row: dict
-        normalized_product: dict | None
-        match_result: dict | None
-        enrichment_result: dict | None
-        evaluation_record: dict | None
-        consistent_output: dict | None
-        audit_entries: list
-        error: str | None
-
-    class BatchState(TypedDict, total=False):
-        batch_id: str
-        supplier_feeds: list
-        items: Annotated[list, operator.add]
-        accepted_items: Annotated[list, operator.add]
-        flagged_items: Annotated[list, operator.add]
-        audit_log: Annotated[list, operator.add]
-
+from corpmind.schemas.state import BatchState, ItemState
+from corpmind.schemas.matching import MatchDecision, MatchResult
 from corpmind.agents.evaluation import (
     EnrichmentResult,
     FieldEnrichment,
     evaluate_item,
 )
+
+logger = logging.getLogger(__name__)
+
 
 async def _call_maybe_async(fn: Callable, *args, **kwargs):
     if inspect.iscoroutinefunction(fn):
