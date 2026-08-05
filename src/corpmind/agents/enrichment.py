@@ -205,7 +205,7 @@ def enrich_fields(product: NormalizedProduct, field_names: list[str]) -> list[Fi
 
     original_values = {fn: getattr(product, fn, None) for fn in field_names}
 
-    llm = ChatGroq(model=settings.extraction_model, api_key=settings.GROQ_API_KEY, temperature=0)
+    llm = ChatGroq(model=settings.enrichment_model, api_key=settings.GROQ_API_KEY, temperature=0)
     llm_with_tools = llm.bind_tools(TOOLS)
 
     messages = [
