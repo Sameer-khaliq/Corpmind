@@ -26,10 +26,12 @@ WIRING / VERIFICATION YOU MUST DO:
 from __future__ import annotations
 
 import functools
+import logging
 import os
 
+from langgraph.types import RetryPolicy
+
 from corpmind.config import settings
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +44,9 @@ def max_concurrent_calls() -> int:
 
 
 # ---------------------------------------------------------------------------
-# RetryPolicy — real langgraph import, local stand-in fallback for sandbox
+# RetryPolicy — real langgraph import (no fallback; package is always
+# installed in this environment, per project convention).
 # ---------------------------------------------------------------------------
-
-from langgraph.types import RetryPolicy
 
 
 # ---------------------------------------------------------------------------

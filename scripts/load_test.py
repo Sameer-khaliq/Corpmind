@@ -16,7 +16,7 @@ from corpmind.graph.build_graph import build_graph
 from corpmind.observability.token_tracker import tracker
 from corpmind.utils.batch_runner import run_batch
 from corpmind.utils.rate_limiter import rate_limited
-
+from corpmind.agents.report import generate_report
 FEED_PATH = Path("data/sample_feeds/day17_amazon_50.csv")
 
 
@@ -181,9 +181,7 @@ async def load_test(feed_path: Path, n_items: int = 50):
     result = await run_batch(real_state, graph=graph)
     elapsed = time.monotonic() - start
 
-    from corpmind.agents.report import generate_report
-
-    report_summary = generate_report(result)
+    generate_report(result)
 
     per_item_seconds = elapsed / n_items
     projected_500_minutes = (per_item_seconds * 500) / 60
@@ -233,8 +231,17 @@ async def load_test(feed_path: Path, n_items: int = 50):
                 f_score = getattr(eval_record, "faithfulness_score", "N/A")
                 c_score = getattr(eval_record, "confidence_score", "N/A")
 
+            print(
+                f"[Day 17] Sample flagged item — source_row_index={source_idx}, title={title_val!r}\n"
+                f"  overall_reason={overall_reason!r}\n"
+                f"  faithfulness_score={f_score}, confidence_score={c_score}"
+            )
         else:
-            pass
+            print(
+                f"[Day 17] Sample flagged item — source_row_index={source_idx}, title={title_val!r}\n"
+                "  no evaluation_record present on this item"
+            )
+
     return report
 
 
