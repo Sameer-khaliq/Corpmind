@@ -157,7 +157,7 @@ def default_disambiguation_fn(match_result: MatchResult) -> dict:
 
     start_time = time.monotonic()
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model=settings.escalation_model,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.0,
         response_format={"type": "json_object"},
@@ -199,7 +199,7 @@ def _run_disambiguation(match_result: MatchResult, disambiguation_fn: Disambigua
     if disambiguation_fn is None:
         raise NotImplementedError(
             "AMBIGUOUS match reached evaluate_match without a disambiguation_fn "
-            "wired in. Wire this to llama-3.3-70b-versatile per §1.5's model "
+            "wired in. Wire this to settings.escalation_model per §1.5's model "
             "routing rule — it must return {'resolved': bool, 'confidence': "
             "float, 'reasoning': str}."
         )
