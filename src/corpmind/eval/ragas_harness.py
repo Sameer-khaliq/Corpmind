@@ -13,17 +13,9 @@ from typing import Callable, Literal
 from pydantic import BaseModel, Field
 import time
 from corpmind.observability.token_tracker import tracker
-try:
-    from corpmind.config import settings  
-    logger = logging.getLogger(__name__)
-except ModuleNotFoundError:
-    import logging
+from corpmind.config import settings
 
-    logger = logging.getLogger(__name__)
-
-    class _StubSettings:
-        FAITHFULNESS_THRESHOLD: float = 0.85
-    settings = _StubSettings()
+logger = logging.getLogger(__name__)
 
 
 def _faithfulness_threshold() -> float:
@@ -50,6 +42,7 @@ class FieldEvalScore(BaseModel):
     if that file already defines this shape; this is the harness's output
     contract either way."""
 
+    catalog_id: str
     field_name: str
     claimed_value: str
     faithfulness_score: float = Field(ge=0.0, le=1.0)
@@ -166,7 +159,7 @@ def default_judge_call_fn(batch: list[FieldFaithfulnessInput]) -> list[dict]:
     start_time = time.monotonic()
     try:
         response = client.chat.completions.create(
-            model='llama-3.3-70b-versatile',
+            model=settings.judge_model,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
             temperature=0.0,
