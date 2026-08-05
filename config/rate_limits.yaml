@@ -5,6 +5,12 @@ models:
   llama-3.3-70b-versatile:
     rpm: 30
     tpm: 12000
+  openai/gpt-oss-120b:
+    rpm: 30
+    tpm: 8000
+  openai/gpt-oss-20b:
+    rpm: 30
+    tpm: 8000
   gemini-2.5-flash:
     rpm: 15
     tpm: 32000
