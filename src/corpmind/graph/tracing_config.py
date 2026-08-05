@@ -27,23 +27,11 @@ from __future__ import annotations
 
 import functools
 import os
-from dataclasses import dataclass
 
-try:
-    from corpmind.config import settings  
-    import logging 
+from corpmind.config import settings
+import logging
 
-    logger = logging.getLogger(__name__)
-except ModuleNotFoundError:
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    class _StubSettings:
-        langsmith_project = "corpmind-dev"
-        max_concurrent_llm_calls = 10
-
-    settings = _StubSettings()
+logger = logging.getLogger(__name__)
 
 
 def max_concurrent_calls() -> int:
@@ -57,21 +45,7 @@ def max_concurrent_calls() -> int:
 # RetryPolicy — real langgraph import, local stand-in fallback for sandbox
 # ---------------------------------------------------------------------------
 
-try:
-    from langgraph.types import RetryPolicy  # type: ignore
-
-    _HAS_LANGGRAPH = True
-except ModuleNotFoundError:
-    _HAS_LANGGRAPH = False
-#defensive wrapper (protective layer)
-    @dataclass
-    class RetryPolicy:  # local mirror — real machine hits the try-branch
-        max_attempts: int = 3
-        initial_interval: float = 0.5
-        backoff_factor: float = 2.0
-        max_interval: float = 30.0
-        jitter: bool = True
-        retry_on: tuple = (Exception,)
+from langgraph.types import RetryPolicy
 
 
 # ---------------------------------------------------------------------------
@@ -248,4 +222,4 @@ if __name__ == "__main__":
     assert classify_api_exception(unclassified) is unclassified
     print("[tracing_config] PASS — exception classification correctly distinct per class.")
     print("max_concurrent_calls():", max_concurrent_calls())
-    print("langgraph installed:", _HAS_LANGGRAPH, "| langsmith installed:", _HAS_LANGSMITH)
+    print("langsmith installed:", _HAS_LANGSMITH)
