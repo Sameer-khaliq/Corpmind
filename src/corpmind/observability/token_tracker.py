@@ -1,23 +1,32 @@
-from dataclasses import dataclass, field
 from collections import defaultdict
+from dataclasses import dataclass, field
+
 
 @dataclass
 class TokenTracker:
-    # stage -> list of (prompt_tokens, completion_tokens, latency_s, batch_size)
-    records: dict[str, list[tuple[int, int, float, int]]] = field(default_factory=lambda: defaultdict(list))
+    records: dict[str, list[tuple[int, int, float, int]]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
 
-    def record(self, stage: str, prompt_tokens: int, completion_tokens: int, latency_s: float, batch_size: int = 1):
+    def record(
+        self,
+        stage: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        latency_s: float,
+        batch_size: int = 1,
+    ) -> None:
         self.records[stage].append((prompt_tokens, completion_tokens, latency_s, batch_size))
 
     def summary(self) -> dict:
-        out = {}
+        out: dict[str, dict[str, float | int]] = {}
         for stage, rows in self.records.items():
             n_calls = len(rows)
-            total_items = sum(r[3] for r in rows) or 1 # Avoid division by zero
+            total_items = sum(r[3] for r in rows) or 1
             total_prompt = sum(r[0] for r in rows)
             total_completion = sum(r[1] for r in rows)
             total_latency = sum(r[2] for r in rows)
-            
+
             out[stage] = {
                 "calls": n_calls,
                 "total_items": total_items,
@@ -28,5 +37,5 @@ class TokenTracker:
             }
         return out
 
-# Module-level singleton
+
 tracker = TokenTracker()
