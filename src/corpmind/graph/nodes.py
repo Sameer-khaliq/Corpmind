@@ -160,18 +160,11 @@ except ModuleNotFoundError:
         flagged_items: Annotated[list, operator.add]
         audit_log: Annotated[list, operator.add]
 
-try:
-    from corpmind.agents.evaluation import (  # type: ignore
-        EnrichmentResult,
-        FieldEnrichment,
-        evaluate_item,
-    )
-except ModuleNotFoundError:
-    from corpmind.agents.evaluation import (  # type: ignore  (sandbox fallback filename)
-        EnrichmentResult,
-        FieldEnrichment,
-        evaluate_item,
-    )
+from corpmind.agents.evaluation import (
+    EnrichmentResult,
+    FieldEnrichment,
+    evaluate_item,
+)
 
 async def _call_maybe_async(fn: Callable, *args, **kwargs):
     if inspect.iscoroutinefunction(fn):
@@ -289,16 +282,10 @@ def _default_consistency_fn(item: ItemState):
         if fr.get("resolution") == "FILLED_GROUNDED":
             payload[fr["field_name"]] = fr.get("enriched_value")
 
-    try:
-        from corpmind.schemas.consistent import ConsistentProduct  # type: ignore
+    from corpmind.schemas.consistent import ConsistentProduct
 
+    try:
         return ConsistentProduct(**payload)
-    except ModuleNotFoundError:
-        # Sandbox-only: real schema module isn't importable here. Return
-        # the merged dict so the graph doesn't crash in this environment;
-        # on the real machine the import above will succeed and this
-        # branch never runs.
-        return payload
     except Exception as e:
         raise ValueError(
             "consistency_fn built a merge payload but ConsistentProduct "
@@ -465,7 +452,7 @@ def make_extract_and_match_node(
                 for e, product in zip(with_candidates, normalized_products)
             ]
 
-        attach_trace_metadata(model_used="llama-3.1-8b-instant", extraction_id=state.get("batch_id", "unknown"))
+        attach_trace_metadata(model_used=settings.extraction_model, extraction_id=state.get("batch_id", "unknown"))
         return {"items": items}
 
     return _node
@@ -549,7 +536,7 @@ def make_enrich_and_evaluate_node(
             high_cutoff=high_cutoff,
             **kwargs,
         )
-        attach_trace_metadata(model_used="gemini-2.5-flash", extraction_id=catalog_id or "unknown")
+        attach_trace_metadata(model_used=settings.judge_model, extraction_id=catalog_id or "unknown")
 
         item: ItemState = {
             **state,
@@ -714,7 +701,7 @@ def make_evaluate_only_node(
             high_cutoff=high_cutoff,
             **kwargs,
         )
-        attach_trace_metadata(model_used="llama-3.3-70b-versatile", extraction_id=catalog_id or "unknown")
+        attach_trace_metadata(model_used=settings.escalation_model, extraction_id=catalog_id or "unknown")
 
         item: ItemState = {**state, "evaluation_record": record, "audit_catalog_id": audit_catalog_id}
 
