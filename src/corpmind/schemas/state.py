@@ -6,6 +6,18 @@ to merge parallel branches, which is how BatchState's accumulator fields
 work below. The graph itself isn't wired until Day 14, but every node
 written from Day 4 onward passes data shaped like this, so the contract
 belongs with the rest of Day 2's schemas, not bolted on later.
+
+NOTE: evaluation_record's type now comes from corpmind.agents.evaluation,
+not corpmind.schemas.evaluation — schemas/evaluation.py defined its own
+MatchEvalScore/EvaluationRecord/FieldEvalScore/Verdict that nothing in the
+real pipeline ever used (agents/evaluation.py has its own EvaluationRecord/
+MatchEvalScore; FieldEvalScore/Verdict come from eval/ragas_harness.py
+instead), confirmed by grepping every real import site. schemas/evaluation.py
+has been deleted. This import technically points state.py (a schemas/ file)
+at agents/ — a minor architectural inversion — but it's the type that's
+actually constructed at runtime, so the alternative (a stale/dead type
+that doesn't match reality) is worse. Revisit if schemas/ ever needs to
+stay agent-independent for real.
 """
 import operator
 from typing import Annotated, TypedDict
@@ -13,7 +25,7 @@ from typing import Annotated, TypedDict
 from corpmind.schemas.audit import AuditLogEntry
 from corpmind.schemas.consistent import ConsistentProduct
 from corpmind.schemas.enrichment import EnrichmentResult
-from corpmind.schemas.evaluation import EvaluationRecord
+from corpmind.agents.evaluation import EvaluationRecord
 from corpmind.schemas.extraction import NormalizedProduct
 from corpmind.schemas.matching import MatchResult
 from corpmind.schemas.raw import RawProduct
@@ -40,7 +52,7 @@ class BatchState(TypedDict, total=False):
     instead of the last branch overwriting the others at the join."""
     batch_id: str
     supplier_feeds: list
-    raw_rows: list[dict]              #
+    raw_rows: list[dict]
     items: Annotated[list[ItemState], operator.add]
     accepted_items: Annotated[list[ConsistentProduct], operator.add]
     flagged_items: Annotated[list[ItemState], operator.add]
