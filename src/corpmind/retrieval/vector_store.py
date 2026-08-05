@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 _client = chromadb.PersistentClient(path=settings.VECTOR_STORE_PATH)
 _collection = _client.get_or_create_collection(
     name=settings.VECTOR_STORE_COLLECTION,
-    embedding_function=None,  
+    embedding_function=None,
 )
 
 _bm25_index: BM25Okapi | None = None
@@ -23,17 +23,15 @@ _genai_client: Any | None = None
 
 
 def _get_genai_client() -> Any:
-   
     global _genai_client
     if _genai_client is None:
-        from google import genai  
+        from google import genai
 
         _genai_client = genai.Client(api_key=settings.GOOGLE_API_KEY)
     return _genai_client
 
 
 def _embed_texts(texts: list[str]) -> list[list[float]]:
-   
     if not texts:
         return []
 
@@ -60,16 +58,18 @@ def _rebuild_bm25_index() -> None:
     tokenized = [doc.lower().split() for doc in everything["documents"]]
     _bm25_index = BM25Okapi(tokenized) if tokenized else None
 
+
 def add_products(ids: list[str], texts: list[str], metadatas: list[dict]) -> None:
     embeddings = _embed_texts(texts)
     _collection.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
     _rebuild_bm25_index()
 
+
 def _dense_search(query_embedding: list[float], metadata_filter: dict | None, top_k: int) -> list[str]:
     res = _collection.query(
         query_embeddings=[query_embedding],
         n_results=top_k,
-        where=metadata_filter,  # Yahin filter hota hai, query layer pe
+        where=metadata_filter,
     )
     return res["ids"][0] if res["ids"] else []
 
@@ -86,7 +86,7 @@ def _sparse_search(query_text: str, metadata_filter: dict | None, top_k: int) ->
         allowed = list(range(len(_bm25_ids)))
 
     masked = np.full_like(scores, -np.inf)
-    masked[allowed] = scores[allowed]  # Filter RANKING SE PEHLE, baad mein nahi
+    masked[allowed] = scores[allowed]  # filter before ranking, not after
     order = [i for i in np.argsort(-masked) if masked[i] != -np.inf]
     return [_bm25_ids[i] for i in order[:top_k]]
 
@@ -127,7 +127,6 @@ def query_store(query_text: str, metadata_filter: dict | None = None, top_k: int
     dense_ids = _dense_search(query_embedding, metadata_filter, top_k)
     sparse_ids = _sparse_search(query_text, metadata_filter, top_k)
 
-    
     shortlisted_ids = [doc_id for doc_id, _ in reciprocal_rank_fusion(dense_ids, sparse_ids)[:top_k]]
     similarities = _cosine_to_candidates(query_embedding, shortlisted_ids)
     scored = [(doc_id, similarities.get(doc_id, 0.0)) for doc_id in shortlisted_ids]
