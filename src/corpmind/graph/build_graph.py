@@ -34,34 +34,7 @@ from corpmind.graph.nodes import (
 )
 from corpmind.graph.tracing_config import GEMINI_RETRY_POLICY, GROQ_RETRY_POLICY
 
-try:
-    from langgraph.graph import END, START, StateGraph  # type: ignore
-    _HAS_LANGGRAPH = True
-except ModuleNotFoundError:
-    _HAS_LANGGRAPH = False
-    START, END = "__start__", "__end__"
-
-    class StateGraph:  # minimal local stand-in — sandbox only
-        def __init__(self, state_type):
-            self.state_type = state_type
-            self.nodes: dict[str, tuple] = {}
-            self.edges: list[tuple] = []
-            self.conditional_edges: list[tuple] = []
-
-        def add_node(self, name, fn, retry_policy=None):
-            self.nodes[name] = (fn, retry_policy)
-            return self
-
-        def add_edge(self, a, b):
-            self.edges.append((a, b))
-            return self
-
-        def add_conditional_edges(self, source, router, targets=None):
-            self.conditional_edges.append((source, router, targets))
-            return self
-
-        def compile(self, **kwargs):
-            return _ManualGraphRunner(self)
+from langgraph.graph import END, START, StateGraph
 
 
 def build_graph(
@@ -118,53 +91,6 @@ def build_graph(
     return graph
 
 
-class _ManualGraphRunner:
-    def __init__(self, graph: "StateGraph"):
-        self.graph = graph
-
-    async def ainvoke(self, initial_state: dict, config: dict | None = None, *, _semaphore=None) -> dict:
-        max_concurrency = (config or {}).get("max_concurrency")
-        semaphore = _semaphore if _semaphore is not None else (asyncio.Semaphore(max_concurrency) if max_concurrency else None)
-
-        async def run(name: str, node_state: dict) -> dict:
-            fn = self.graph.nodes[name][0]
-            if semaphore is not None:
-                async with semaphore:
-                    res = await fn(node_state)
-            else:
-                res = await fn(node_state)
-            return res if isinstance(res, dict) else {}
-
-        state = dict(initial_state)
-        node_updates = await run("extract_and_match", state)
-        if isinstance(node_updates, dict):
-            state.update(node_updates)
-
-        # Fallback: some smoke-test inputs seed items under supplier_feeds_rows
-        # instead of items — only applies if extract_and_match didn't already
-        # populate items itself.
-        if "items" not in state and "supplier_feeds_rows" in state:
-            state["items"] = state["supplier_feeds_rows"]
-
-        sends = route_after_matching(state)
-        results = await asyncio.gather(*[run(send.node, send.arg) for send in sends])
-
-        accepted, flagged = [], []
-        for r in results:
-            if r:
-                accepted.extend(r.get("accepted_items", []))
-                flagged.extend(r.get("flagged_items", []))
-
-        state["accepted_items"] = state.get("accepted_items", []) + accepted
-        state["flagged_items"] = state.get("flagged_items", []) + flagged
-        return state
-
-    async def abatch(self, initial_states: list[dict], config: dict | None = None) -> list[dict]:
-        max_concurrency = (config or {}).get("max_concurrency")
-        shared_semaphore = asyncio.Semaphore(max_concurrency) if max_concurrency else None
-        return await asyncio.gather(*[self.ainvoke(s, config=None, _semaphore=shared_semaphore) for s in initial_states])
-
-
 async def _main() -> None:
     compiled = build_graph().compile()
 
@@ -207,6 +133,6 @@ async def _main() -> None:
         # that used to print a "Pass" message for ANY exception type,
         # including ones that had nothing to do with this gap.
 
-    print("\nlanggraph installed:", _HAS_LANGGRAPH, "— using real StateGraph pregel engine workflow")
+    print("\n[Day 14] using real LangGraph StateGraph Pregel engine workflow")
 if __name__ == "__main__":
     asyncio.run(_main())
