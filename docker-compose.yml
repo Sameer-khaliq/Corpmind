@@ -1,0 +1,16 @@
+# docker-compose.yml
+services:
+  corpmind:
+    build: .
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - chroma_data:/app/data/chroma_store
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+
+volumes:
+  chroma_data:
