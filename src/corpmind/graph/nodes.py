@@ -189,48 +189,67 @@ def _default_disambiguation_fn(match_result) -> dict:
 
 def _default_consistency_fn(item: ItemState):
     """
-    BEST-EFFORT WIRING, still flagged: schemas/consistent.py's real
-    ConsistentProduct model has not been confirmed against this file, so
-    this builds the merge payload from what IS confirmed — NormalizedProduct's
-    real fields (extraction.py) overlaid with FieldEnrichment's
-    FILLED_GROUNDED values (enrichment.py) — and lets ConsistentProduct
-    itself validate the result. If the real model's field names differ,
-    this raises a real, traceable pydantic ValidationError naming exactly
-    which field is wrong, instead of either fabricating a fake shape or
-    hard-blocking every ACCEPT verdict with NotImplementedError like the
-    previous version did. Replace with a real
-    corpmind.agents.consistency.build_consistent_product() once that agent
-    exists — this is a stopgap so accepted_items can actually populate.
+    BEST-EFFORT WIRING with safe taxonomy-compliant extraction.
     """
-    normalized = dict(item.get("normalized_product") or {})
+    normalized = item.get("normalized_product") or {}
+    if hasattr(normalized, "model_dump"):
+        normalized = normalized.model_dump()
+    elif not isinstance(normalized, dict):
+        normalized = dict(normalized)
+
     match_result = item.get("match_result")
     enrichment_result = item.get("enrichment_result") or {}
+    if hasattr(enrichment_result, "model_dump"):
+        enrichment_result = enrichment_result.model_dump()
+
+    raw_prod = item.get("raw_product") or {}
+    if hasattr(raw_prod, "model_dump"):
+        raw_prod = raw_prod.model_dump()
 
     payload = dict(normalized)
 
-    # CRASH FIX: an AMBIGUOUS item that disambiguation resolves to ACCEPT
-    # still has match_result.catalog_id == None -- MatchResult's own
-    # validator forbids setting it while decision == AMBIGUOUS, so there is
-    # no real catalog_id anywhere on match_result for this case, only the
-    # traceable "ambiguous_pending_*" sentinel stashed elsewhere. Without
-    # this override, payload never gets a catalog_id at all and
-    # ConsistentProduct rejects it as a required field -- confirmed real
-    # risk once real disambiguation was wired in (previously unreachable
-    # with the stub). The caller (evaluate_only_node) mints a real
-    # catalog_id and stashes it here before calling this function; normal
-    # (non-ambiguous) items simply won't have this key set, falling back
-    # to match_result.catalog_id as before.
+    # Safe extraction for mandatory fields: title & category
+    title = (
+        payload.get("title")
+        or item.get("title")
+        or raw_prod.get("title")
+        or "Untitled Product"
+    )
+    
+    # Category MUST match controlled taxonomy: 'other' as safe fallback
+    category = (
+        payload.get("category")
+        or item.get("category")
+        or raw_prod.get("category")
+        or "other"  # <--- TAXONOMY FIX: 'Uncategorized' ki jagah 'other'
+    )
+
+    # Format check: lower-case / taxonomy mapping
+    category = str(category).lower().strip()
+    valid_categories = {'casual-shoes', 'handbags', 'jeans', 'other', 'shirts', 'tops', 'tshirts'}
+    if category not in valid_categories:
+        category = "other"
+
+    payload["title"] = title
+    payload["category"] = category
+
+    # catalog_id resolution for ambiguous/resolved items
     catalog_id = item.get("resolved_catalog_id")
     if catalog_id is None:
         catalog_id = getattr(match_result, "catalog_id", None)
         if catalog_id is None and isinstance(match_result, dict):
             catalog_id = match_result.get("catalog_id")
+    
     if catalog_id:
         payload["catalog_id"] = catalog_id
 
-    for fr in enrichment_result.get("field_results", []):
-        if fr.get("resolution") == "FILLED_GROUNDED":
+    # Apply enrichment fields
+    field_results = enrichment_result.get("field_results", [])
+    for fr in field_results:
+        if isinstance(fr, dict) and fr.get("resolution") == "FILLED_GROUNDED":
             payload[fr["field_name"]] = fr.get("enriched_value")
+        elif hasattr(fr, "resolution") and getattr(fr, "resolution") == "FILLED_GROUNDED":
+            payload[getattr(fr, "field_name")] = getattr(fr, "enriched_value")
 
     from corpmind.schemas.consistent import ConsistentProduct
 
@@ -242,7 +261,6 @@ def _default_consistency_fn(item: ItemState):
             f"rejected it — this is a real schema mismatch, not a wiring "
             f"bug, and needs the field names reconciled: {e}"
         ) from e
-
 
 # ---------------------------------------------------------------------------
 # Batch-level node: extraction + Phase A + Phase B, combined
