@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS base
+FROM python:3.12-slim AS base
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -17,7 +17,7 @@ COPY src/ ./src/
 COPY config/ ./config/
 COPY ui/ ./ui/
 
-RUN mkdir -p /app/data/chroma_store
+RUN mkdir -p /app/data/chroma
 
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
