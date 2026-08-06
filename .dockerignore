@@ -1,0 +1,12 @@
+# .dockerignore
+.venv
+__pycache__
+*.pyc
+.env
+.git
+.pytest_cache
+tests/
+data/chroma_store/
+*.md
+scripts/
+load_test.py
