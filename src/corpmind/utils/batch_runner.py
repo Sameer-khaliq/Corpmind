@@ -118,7 +118,7 @@ async def _load_test() -> None:
 
     call_timestamps: list[float] = []
     t_start = time.monotonic()
-
+    
     @rate_limited("extraction_model", estimate_tokens=10)
     async def mocked_extraction_fn(raw_row: dict) -> dict:
         # No real API call — this is the mocked-LLM part of the checkpoint.
